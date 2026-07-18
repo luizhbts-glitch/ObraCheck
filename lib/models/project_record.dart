@@ -23,6 +23,12 @@ class ProjectRecord extends HiveObject {
   @HiveField(5)
   final DateTime updatedAt;
 
+  /// Construtora dona da obra. Vazio em obras criadas antes da hierarquia
+  /// de organizações — essas seguem funcionando sem vínculo até serem
+  /// associadas pelo admin global.
+  @HiveField(6, defaultValue: '')
+  final String orgId;
+
   ProjectRecord({
     required this.id,
     required this.name,
@@ -30,6 +36,7 @@ class ProjectRecord extends HiveObject {
     required this.isActive,
     required this.createdAt,
     required this.updatedAt,
+    this.orgId = '',
   });
 
   ProjectRecord copyWith({
@@ -39,6 +46,7 @@ class ProjectRecord extends HiveObject {
     bool? isActive,
     DateTime? createdAt,
     DateTime? updatedAt,
+    String? orgId,
   }) {
     return ProjectRecord(
       id: id ?? this.id,
@@ -47,6 +55,7 @@ class ProjectRecord extends HiveObject {
       isActive: isActive ?? this.isActive,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
+      orgId: orgId ?? this.orgId,
     );
   }
 
@@ -68,6 +77,7 @@ class ProjectRecord extends HiveObject {
       'isActive': isActive,
       'createdAt': Timestamp.fromDate(createdAt),
       'updatedAt': Timestamp.fromDate(updatedAt),
+      'orgId': orgId,
     };
   }
 
@@ -79,6 +89,7 @@ class ProjectRecord extends HiveObject {
       isActive: map['isActive'] == true,
       createdAt: _toDate(map['createdAt']),
       updatedAt: _toDate(map['updatedAt']),
+      orgId: (map['orgId'] ?? '').toString(),
     );
   }
 }

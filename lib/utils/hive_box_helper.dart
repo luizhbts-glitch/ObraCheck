@@ -64,6 +64,8 @@ class HiveBoxHelper {
       'user_project_memberships',
       'project_invites',
       'project_access_codes',
+      'construtoras',
+      'user_org_memberships',
       'project_settings',
       'equipments',
       'equipment_movements',

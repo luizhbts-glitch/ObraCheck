@@ -23,13 +23,14 @@ class ProjectRecordAdapter extends TypeAdapter<ProjectRecord> {
       isActive: fields[3] as bool,
       createdAt: fields[4] as DateTime,
       updatedAt: fields[5] as DateTime,
+      orgId: fields[6] == null ? '' : fields[6] as String,
     );
   }
 
   @override
   void write(BinaryWriter writer, ProjectRecord obj) {
     writer
-      ..writeByte(6)
+      ..writeByte(7)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -41,7 +42,9 @@ class ProjectRecordAdapter extends TypeAdapter<ProjectRecord> {
       ..writeByte(4)
       ..write(obj.createdAt)
       ..writeByte(5)
-      ..write(obj.updatedAt);
+      ..write(obj.updatedAt)
+      ..writeByte(6)
+      ..write(obj.orgId);
   }
 
   @override

@@ -18,12 +18,14 @@ import 'screens/empreiteiros_screen.dart';
 import 'screens/almoxarife_screen.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'models/company_record.dart';
+import 'models/construtora_record.dart';
 import 'models/diary_record.dart';
 import 'models/inspection_record.dart';
 import 'models/project_record.dart';
 import 'models/project_invite_record.dart';
 import 'models/project_access_code_record.dart';
 import 'models/service_record.dart';
+import 'models/user_org_membership.dart';
 import 'models/user_project_membership.dart';
 import 'services/auth_service.dart';
 import 'services/app_update_service.dart';
@@ -106,6 +108,8 @@ Future<void> _openLazyBoxes() async {
   await HiveBoxHelper.openBoxSafe<ProjectAccessCodeRecord>(
     'project_access_codes',
   );
+  await HiveBoxHelper.openBoxSafe<ConstrutoraRecord>('construtoras');
+  await HiveBoxHelper.openBoxSafe<UserOrgMembership>('user_org_memberships');
   await HiveBoxHelper.openBoxRawSafe('project_settings');
   await HiveBoxHelper.openBoxRawSafe('equipments');
   await HiveBoxHelper.openBoxRawSafe('equipment_movements');
@@ -134,13 +138,18 @@ void _registerHiveAdapters() {
   _safeRegisterAdapter(
     () => Hive.registerAdapter(ProjectAccessCodeRecordAdapter()),
   );
+  _safeRegisterAdapter(() => Hive.registerAdapter(ConstrutoraRecordAdapter()));
+  _safeRegisterAdapter(() => Hive.registerAdapter(UserOrgMembershipAdapter()));
 }
 
 void _safeRegisterAdapter(void Function() register) {
   try {
     register();
-  } catch (_) {
-    // Adapter já registrado em hot-reload/hot-restart.
+  } catch (e) {
+    // Esperado apenas em hot-reload/hot-restart (adapter já registrado).
+    // Qualquer outra causa (ex.: colisão de typeId) precisa aparecer no log —
+    // já mascarou um bug real de convites não persistindo.
+    debugPrint('[BOOT] registerAdapter falhou: $e');
   }
 }
 
