@@ -34,6 +34,7 @@ import 'services/sync_orchestrator.dart';
 import 'services/project_context_service.dart';
 import 'services/project_members_service.dart';
 import 'services/user_profile_service.dart';
+import 'screens/construtoras_admin_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/project_members_screen.dart';
 import 'screens/project_settings_screen.dart';
@@ -649,6 +650,23 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     }
   }
 
+  void _toggleOrgEditMode() {
+    final enabling = !_projectContext.orgEditModeEnabled;
+    setState(() {
+      _projectContext.setOrgEditMode(enabling);
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          enabling
+              ? 'Modo edição ativado: você agora pode alterar dados desta obra.'
+              : 'Modo visualização: alterações bloqueadas novamente.',
+        ),
+        duration: const Duration(seconds: 2),
+      ),
+    );
+  }
+
   Future<void> _pickProject() async {
     final projects = _projectContext.availableProjectsForCurrentUserSync();
     String? selectedId = _projectContext.currentProjectIdSync;
@@ -1162,6 +1180,33 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       appBar: AppBar(
         title: const Text('Obra Check'),
         actions: [
+          if (hasProject && _projectContext.hasElevatedAccessSync)
+            IconButton(
+              tooltip: _projectContext.orgEditModeEnabled
+                  ? 'Modo edição ativo — tocar para voltar à visualização'
+                  : 'Modo visualização — tocar para liberar edição',
+              onPressed: _toggleOrgEditMode,
+              icon: Icon(
+                _projectContext.orgEditModeEnabled
+                    ? Icons.edit
+                    : Icons.visibility_outlined,
+                color: _projectContext.orgEditModeEnabled
+                    ? Theme.of(context).colorScheme.tertiary
+                    : null,
+              ),
+            ),
+          if (_projectContext.isGlobalAdminSync)
+            IconButton(
+              tooltip: 'Construtoras (administração)',
+              onPressed: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => const ConstrutorasAdminScreen(),
+                  ),
+                );
+              },
+              icon: const Icon(Icons.admin_panel_settings_outlined),
+            ),
           if (hasProject)
             IconButton(
               tooltip: 'Trocar obra',
