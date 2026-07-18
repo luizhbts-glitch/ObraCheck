@@ -6,23 +6,6 @@ part of 'diary_record.dart';
 // TypeAdapterGenerator
 // **************************************************************************
 
-int _safeHiveDiaryInt(dynamic value, String field, {int fallback = 0}) {
-  if (value == null) {
-    if (AppLog.enableSyncLogs) {
-      debugPrint('[SYNC][NULL_INT_FIX] campo=$field origem=Hive valor=null fallback=$fallback');
-    }
-    return fallback;
-  }
-  if (value is int) return value;
-  if (value is num) return value.toInt();
-  final parsed = int.tryParse(value.toString());
-  if (parsed != null) return parsed;
-  if (AppLog.enableSyncLogs) {
-    debugPrint('[SYNC][NULL_INT_FIX] campo=$field origem=Hive valor_invalido="$value" fallback=$fallback');
-  }
-  return fallback;
-}
-
 class DiaryServiceEntryAdapter extends TypeAdapter<DiaryServiceEntry> {
   @override
   final int typeId = 8;
@@ -39,18 +22,18 @@ class DiaryServiceEntryAdapter extends TypeAdapter<DiaryServiceEntry> {
       companyName: fields[2] as String,
       localRef: fields[3] as String,
       localLabel: fields[4] as String,
-      peopleCount: _safeHiveDiaryInt(fields[5], 'DiaryServiceEntry.peopleCount', fallback: 0),
+      peopleCount: fields[5] as int,
       serviceStatus: fields[6] as String,
       note: fields[7] as String,
       photos: (fields[8] as List).cast<InspectionPhotoData>(),
-      fvsCodigo: (fields[9] as String?) ?? '',
-      fvsNome: (fields[10] as String?) ?? '',
-      tower: (fields[11] as String?) ?? '',
-      floor: _safeHiveDiaryInt(fields[12], 'DiaryServiceEntry.floor', fallback: 0),
-      apartment: (fields[13] as String?) ?? '',
-      locationType: (fields[14] as String?) ?? '',
-      locationContext: (fields[15] as String?) ?? '',
-      inspectionElement: (fields[16] as String?) ?? '',
+      fvsCodigo: fields[9] as String,
+      fvsNome: fields[10] as String,
+      tower: fields[11] as String,
+      floor: fields[12] as int,
+      apartment: fields[13] as String,
+      locationType: fields[14] as String,
+      locationContext: fields[15] as String,
+      inspectionElement: fields[16] as String,
     );
   }
 
@@ -118,8 +101,8 @@ class DiaryOwnLaborEntryAdapter extends TypeAdapter<DiaryOwnLaborEntry> {
     return DiaryOwnLaborEntry(
       id: fields[0] as String,
       role: fields[1] as String,
-      peopleCount: _safeHiveDiaryInt(fields[2], 'DiaryOwnLaborEntry.peopleCount', fallback: 0),
-      orderIndex: _safeHiveDiaryInt(fields[3], 'DiaryOwnLaborEntry.orderIndex', fallback: 0),
+      peopleCount: fields[2] as int,
+      orderIndex: fields[3] as int,
     );
   }
 
@@ -173,13 +156,13 @@ class DiaryRecordAdapter extends TypeAdapter<DiaryRecord> {
       pendingSync: fields[11] as bool,
       deletedAt: fields[12] as DateTime?,
       generalPhotos: (fields[13] as List).cast<InspectionPhotoData>(),
-      climateMorning: (fields[14] as String?) ?? '',
-      climateAfternoon: (fields[15] as String?) ?? '',
-      rentedMachinery: (fields[16] as String?) ?? '',
-      rentedEquipment: (fields[17] as String?) ?? '',
-      createdByName: (fields[18] as String?) ?? '',
-      approvedByName: (fields[19] as String?) ?? '',
-      approvalStatus: (fields[20] as String?) ?? '',
+      climateMorning: fields[14] as String,
+      climateAfternoon: fields[15] as String,
+      rentedMachinery: fields[16] as String,
+      rentedEquipment: fields[17] as String,
+      createdByName: fields[18] as String,
+      approvedByName: fields[19] as String,
+      approvalStatus: fields[20] as String,
     );
   }
 

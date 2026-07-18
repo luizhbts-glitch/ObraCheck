@@ -6,24 +6,8 @@ part of 'project_access_code_record.dart';
 // TypeAdapterGenerator
 // **************************************************************************
 
-int _safeHiveProjectAccessInt(dynamic value, String field, {int fallback = 0}) {
-  if (value == null) {
-    if (AppLog.enableSyncLogs) {
-      debugPrint('[SYNC][NULL_INT_FIX] campo=$field origem=Hive valor=null fallback=$fallback');
-    }
-    return fallback;
-  }
-  if (value is int) return value;
-  if (value is num) return value.toInt();
-  final parsed = int.tryParse(value.toString());
-  if (parsed != null) return parsed;
-  if (AppLog.enableSyncLogs) {
-    debugPrint('[SYNC][NULL_INT_FIX] campo=$field origem=Hive valor_invalido="$value" fallback=$fallback');
-  }
-  return fallback;
-}
-
-class ProjectAccessCodeRecordAdapter extends TypeAdapter<ProjectAccessCodeRecord> {
+class ProjectAccessCodeRecordAdapter
+    extends TypeAdapter<ProjectAccessCodeRecord> {
   @override
   final int typeId = 11;
 
@@ -39,15 +23,15 @@ class ProjectAccessCodeRecordAdapter extends TypeAdapter<ProjectAccessCodeRecord
       code: fields[2] as String,
       role: fields[3] as String,
       expiresAt: fields[4] as DateTime?,
-      maxUses: _safeHiveProjectAccessInt(fields[5], 'ProjectAccessCodeRecord.maxUses', fallback: 1),
-      usedCount: _safeHiveProjectAccessInt(fields[6], 'ProjectAccessCodeRecord.usedCount', fallback: 0),
+      maxUses: fields[5] as int,
+      usedCount: fields[6] as int,
       isActive: fields[7] as bool,
-      isMaster: (fields[14] as bool?) ?? false,
+      isMaster: fields[14] as bool,
       createdByUid: fields[8] as String,
-      createdByName: fields[9] as String?,
       createdAt: fields[10] as DateTime,
       updatedAt: fields[11] as DateTime,
-      pendingSync: (fields[12] as bool?) ?? false,
+      createdByName: fields[9] as String?,
+      pendingSync: fields[12] as bool,
       syncError: fields[13] as String?,
     );
   }
@@ -72,6 +56,8 @@ class ProjectAccessCodeRecordAdapter extends TypeAdapter<ProjectAccessCodeRecord
       ..write(obj.usedCount)
       ..writeByte(7)
       ..write(obj.isActive)
+      ..writeByte(14)
+      ..write(obj.isMaster)
       ..writeByte(8)
       ..write(obj.createdByUid)
       ..writeByte(9)
@@ -83,9 +69,7 @@ class ProjectAccessCodeRecordAdapter extends TypeAdapter<ProjectAccessCodeRecord
       ..writeByte(12)
       ..write(obj.pendingSync)
       ..writeByte(13)
-      ..write(obj.syncError)
-      ..writeByte(14)
-      ..write(obj.isMaster);
+      ..write(obj.syncError);
   }
 
   @override
@@ -98,4 +82,3 @@ class ProjectAccessCodeRecordAdapter extends TypeAdapter<ProjectAccessCodeRecord
           runtimeType == other.runtimeType &&
           typeId == other.typeId;
 }
-

@@ -6,23 +6,6 @@ part of 'service_record.dart';
 // TypeAdapterGenerator
 // **************************************************************************
 
-int _safeHiveServiceInt(dynamic value, String field, {int fallback = 0}) {
-  if (value == null) {
-    if (AppLog.enableSyncLogs) {
-      debugPrint('[SYNC][NULL_INT_FIX] campo=$field origem=Hive valor=null fallback=$fallback');
-    }
-    return fallback;
-  }
-  if (value is int) return value;
-  if (value is num) return value.toInt();
-  final parsed = int.tryParse(value.toString());
-  if (parsed != null) return parsed;
-  if (AppLog.enableSyncLogs) {
-    debugPrint('[SYNC][NULL_INT_FIX] campo=$field origem=Hive valor_invalido="$value" fallback=$fallback');
-  }
-  return fallback;
-}
-
 class ServiceRecordAdapter extends TypeAdapter<ServiceRecord> {
   @override
   final int typeId = 3;
@@ -37,7 +20,7 @@ class ServiceRecordAdapter extends TypeAdapter<ServiceRecord> {
       id: fields[0] as String,
       obra: fields[1] as String,
       torre: fields[2] as String,
-      andar: _safeHiveServiceInt(fields[3], 'ServiceRecord.andar', fallback: 0),
+      andar: fields[3] as int,
       localRef: fields[4] as String,
       localLabel: fields[5] as String,
       empresaId: fields[6] as String,

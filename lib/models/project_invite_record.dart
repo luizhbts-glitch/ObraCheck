@@ -3,7 +3,9 @@ import 'package:hive/hive.dart';
 
 part 'project_invite_record.g.dart';
 
-@HiveType(typeId: 8)
+// typeId 12: o 8 colidia com DiaryServiceEntry e o adapter deste model nunca
+// chegava a ser registrado (falha silenciosa em _safeRegisterAdapter).
+@HiveType(typeId: 12)
 class ProjectInviteRecord extends HiveObject {
   static const String statusPending = 'pending';
   static const String statusAccepted = 'accepted';

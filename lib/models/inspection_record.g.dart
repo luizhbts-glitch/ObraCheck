@@ -6,23 +6,6 @@ part of 'inspection_record.dart';
 // TypeAdapterGenerator
 // **************************************************************************
 
-int _safeHiveInt(dynamic value, String field, {int fallback = 0}) {
-  if (value == null) {
-    if (AppLog.enableSyncLogs) {
-      debugPrint('[SYNC][NULL_INT_FIX] campo=$field origem=Hive valor=null fallback=$fallback');
-    }
-    return fallback;
-  }
-  if (value is int) return value;
-  if (value is num) return value.toInt();
-  final parsed = int.tryParse(value.toString());
-  if (parsed != null) return parsed;
-  if (AppLog.enableSyncLogs) {
-    debugPrint('[SYNC][NULL_INT_FIX] campo=$field origem=Hive valor_invalido="$value" fallback=$fallback');
-  }
-  return fallback;
-}
-
 class InspectionRecordAdapter extends TypeAdapter<InspectionRecord> {
   @override
   final int typeId = 1;
@@ -36,12 +19,11 @@ class InspectionRecordAdapter extends TypeAdapter<InspectionRecord> {
     return InspectionRecord(
       obra: fields[0] as String,
       torre: fields[1] as String,
-      andar: _safeHiveInt(fields[2], 'InspectionRecord.andar', fallback: 0),
+      andar: fields[2] as int,
       apto: fields[3] as String,
       fvsCodigo: fields[4] as String,
       fvsNome: fields[5] as String,
-      itens: ((fields[6] as List?) ?? const <InspectionItemResult>[])
-          .cast<InspectionItemResult>(),
+      itens: (fields[6] as List).cast<InspectionItemResult>(),
       createdAt: fields[7] as DateTime,
       id: fields[8] as String,
       updatedAt: fields[9] as DateTime,
@@ -55,13 +37,13 @@ class InspectionRecordAdapter extends TypeAdapter<InspectionRecord> {
       actionByName: fields[17] as String?,
       actionByCargo: fields[18] as String?,
       actionAt: fields[19] as DateTime?,
-      deleted: (fields[20] as bool?) ?? false,
-      pendingSync: (fields[21] as bool?) ?? false,
+      deleted: fields[20] as bool,
+      pendingSync: fields[21] as bool,
       deletedAt: fields[22] as DateTime?,
       ncCompanyId: fields[23] as String?,
       ncCompanyName: fields[24] as String?,
       inspectionElement: fields[25] as String?,
-      projectId: (fields[26] as String?) ?? kLegacyProjectId,
+      projectId: fields[26] as String,
       operationalSheetId: fields[27] as String?,
       operationalSheetLabel: fields[28] as String?,
     );
@@ -153,26 +135,25 @@ class InspectionItemResultAdapter extends TypeAdapter<InspectionItemResult> {
       for (int i = 0; i < numOfFields; i++) reader.readByte(): reader.read(),
     };
     return InspectionItemResult(
-      index: _safeHiveInt(fields[0], 'InspectionItemResult.index', fallback: 0),
+      index: fields[0] as int,
       descricao: fields[1] as String,
       dica: fields[2] as String,
       status: fields[3] as String,
       obs: fields[4] as String,
-      photoPaths: ((fields[5] as List?) ?? const <String>[]).cast<String>(),
-      photos: ((fields[6] as List?) ?? const <InspectionPhotoData>[])
-          .cast<InspectionPhotoData>(),
+      photoPaths: (fields[5] as List).cast<String>(),
+      photos: (fields[6] as List).cast<InspectionPhotoData>(),
       ncCompanyId: fields[7] as String?,
       ncCompanyName: fields[8] as String?,
-      proofType: (fields[9] as String?) ?? InspectionItemResult.proofVisual,
-      requiresPhoto: (fields[10] as bool?) ?? false,
+      proofType: fields[9] as String,
+      requiresPhoto: fields[10] as bool,
       measuredValue: fields[11] as double?,
       measuredUnit: fields[12] as String?,
       technicalNote: fields[13] as String?,
-      sampledLocations: ((fields[14] as List?) ?? const <String>[]).cast<String>(),
+      sampledLocations: (fields[14] as List).cast<String>(),
       measurementToleranceMin: fields[15] as double?,
       measurementToleranceMax: fields[16] as double?,
-      requiresTechnicalNote: (fields[17] as bool?) ?? false,
-      supportsSampling: (fields[18] as bool?) ?? false,
+      requiresTechnicalNote: fields[17] as bool,
+      supportsSampling: fields[18] as bool,
     );
   }
 

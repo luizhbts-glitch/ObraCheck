@@ -8,7 +8,7 @@ part of 'project_invite_record.dart';
 
 class ProjectInviteRecordAdapter extends TypeAdapter<ProjectInviteRecord> {
   @override
-  final int typeId = 8;
+  final int typeId = 12;
 
   @override
   ProjectInviteRecord read(BinaryReader reader) {
@@ -24,12 +24,12 @@ class ProjectInviteRecordAdapter extends TypeAdapter<ProjectInviteRecord> {
       role: fields[4] as String,
       status: fields[5] as String,
       invitedByUid: fields[6] as String,
-      invitedByName: fields[7] as String?,
       invitedAt: fields[8] as DateTime,
       updatedAt: fields[9] as DateTime,
+      invitedByName: fields[7] as String?,
       acceptedByUid: fields[10] as String?,
       acceptedAt: fields[11] as DateTime?,
-      pendingSync: (fields[12] as bool?) ?? false,
+      pendingSync: fields[12] as bool,
       syncError: fields[13] as String?,
     );
   }
@@ -78,4 +78,3 @@ class ProjectInviteRecordAdapter extends TypeAdapter<ProjectInviteRecord> {
           runtimeType == other.runtimeType &&
           typeId == other.typeId;
 }
-
