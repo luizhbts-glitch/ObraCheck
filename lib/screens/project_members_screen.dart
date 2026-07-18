@@ -7,6 +7,8 @@ import '../models/user_project_membership.dart';
 import '../services/permission_service.dart';
 import '../services/project_context_service.dart';
 import '../services/project_members_service.dart';
+import '../theme/app_colors.dart';
+import '../widgets/admin_ui.dart';
 
 class ProjectMembersScreen extends StatefulWidget {
   const ProjectMembersScreen({super.key});
@@ -36,11 +38,6 @@ class _ProjectMembersScreenState extends State<ProjectMembersScreen> {
   void initState() {
     super.initState();
     _reload();
-  }
-
-  @override
-  void dispose() {
-    super.dispose();
   }
 
   Future<void> _reload() async {
@@ -114,23 +111,12 @@ class _ProjectMembersScreenState extends State<ProjectMembersScreen> {
     });
   }
 
-  String _roleLabel(String role) {
-    switch (role) {
-      case UserProjectMembership.roleAdmin:
-        return 'Admin';
-      case UserProjectMembership.roleManager:
-        return 'Gestor';
-      case UserProjectMembership.roleInspector:
-        return 'Inspetor';
-      default:
-        return 'Leitor';
-    }
-  }
+  String _formatDate(DateTime date) =>
+      '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}';
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
+    final appColors = context.appColors;
     final projectName = ProjectContextService.instance.currentProjectNameSync;
 
     return Scaffold(
@@ -141,37 +127,77 @@ class _ProjectMembersScreenState extends State<ProjectMembersScreen> {
             : RefreshIndicator(
                 onRefresh: _reload,
                 child: ListView(
-                  padding: const EdgeInsets.all(16),
+                  padding: const EdgeInsets.all(14),
                   children: [
-                    Text(
-                      'Obra ativa: $projectName',
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
+                    Card(
+                      child: Padding(
+                        padding: const EdgeInsets.all(14),
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 40,
+                              height: 40,
+                              decoration: BoxDecoration(
+                                color: appColors.selected.withValues(alpha: 0.14),
+                                shape: BoxShape.circle,
+                              ),
+                              child: Icon(
+                                Icons.apartment_outlined,
+                                color: appColors.selected,
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Obra ativa',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: appColors.textSecondary,
+                                    ),
+                                  ),
+                                  Text(
+                                    projectName,
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 15.5,
+                                      color: appColors.textPrimary,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                     const SizedBox(height: 12),
+
+                    // ── Gerar código de acesso ────────────────────────────
                     Card(
                       child: Padding(
-                        padding: const EdgeInsets.all(12),
+                        padding: const EdgeInsets.all(14),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(
-                              'Gerar código temporário de acesso',
-                              style: theme.textTheme.titleSmall?.copyWith(
-                                fontWeight: FontWeight.w700,
-                              ),
+                            SectionHeader(
+                              icon: Icons.vpn_key_outlined,
+                              title: 'Gerar código de acesso',
+                              color: appColors.selected,
                             ),
-                            const SizedBox(height: 8),
-                            if (!_canManage)
+                            if (!_canManage) ...[
+                              const SizedBox(height: 8),
                               Text(
                                 'Somente admin pode gerenciar usuários nesta obra.',
                                 style: TextStyle(
-                                  color: scheme.onSurfaceVariant,
+                                  color: appColors.textSecondary,
                                   fontSize: 12,
                                 ),
                               ),
-                            const SizedBox(height: 8),
+                            ],
+                            const SizedBox(height: 12),
                             DropdownButtonFormField<String>(
                               initialValue: _role,
                               onChanged: !_canManage || _submitting
@@ -180,40 +206,49 @@ class _ProjectMembersScreenState extends State<ProjectMembersScreen> {
                                       if (value == null) return;
                                       setState(() => _role = value);
                                     },
-                              items: const [
-                                DropdownMenuItem(
-                                  value: UserProjectMembership.roleAdmin,
-                                  child: Text('Admin'),
-                                ),
-                                DropdownMenuItem(
-                                  value: UserProjectMembership.roleManager,
-                                  child: Text('Gestor'),
-                                ),
-                                DropdownMenuItem(
-                                  value: UserProjectMembership.roleInspector,
-                                  child: Text('Inspetor'),
-                                ),
-                                DropdownMenuItem(
-                                  value: UserProjectMembership.roleViewer,
-                                  child: Text('Leitor'),
+                              decoration: const InputDecoration(
+                                labelText: 'Papel concedido',
+                              ),
+                              items: [
+                                UserProjectMembership.roleAdmin,
+                                UserProjectMembership.roleManager,
+                                UserProjectMembership.roleInspector,
+                                UserProjectMembership.roleViewer,
+                              ]
+                                  .map(
+                                    (role) => DropdownMenuItem(
+                                      value: role,
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Icon(
+                                            projectRoleVisual(context, role).icon,
+                                            size: 16,
+                                            color: projectRoleVisual(context, role).color,
+                                          ),
+                                          const SizedBox(width: 8),
+                                          Text(projectRoleVisual(context, role).label),
+                                        ],
+                                      ),
+                                    ),
+                                  )
+                                  .toList(),
+                            ),
+                            const SizedBox(height: 10),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: OutlinedButton.icon(
+                                    onPressed: !_canManage || _submitting
+                                        ? null
+                                        : _pickExpiryDate,
+                                    icon: const Icon(Icons.event_outlined, size: 16),
+                                    label: Text('Expira ${_formatDate(_expiresAt)}'),
+                                  ),
                                 ),
                               ],
                             ),
-                            const SizedBox(height: 8),
-                            ListTile(
-                              contentPadding: EdgeInsets.zero,
-                              title: const Text('Validade do código'),
-                              subtitle: Text(
-                                '${_expiresAt.day.toString().padLeft(2, '0')}/${_expiresAt.month.toString().padLeft(2, '0')}/${_expiresAt.year}',
-                              ),
-                              trailing: OutlinedButton(
-                                onPressed: !_canManage || _submitting
-                                    ? null
-                                    : _pickExpiryDate,
-                                child: const Text('Alterar'),
-                              ),
-                            ),
-                            const SizedBox(height: 8),
+                            const SizedBox(height: 10),
                             TextFormField(
                               initialValue: '1',
                               enabled: _canManage && !_submitting,
@@ -221,6 +256,7 @@ class _ProjectMembersScreenState extends State<ProjectMembersScreen> {
                               decoration: const InputDecoration(
                                 labelText: 'Quantidade de usos',
                                 helperText: 'Pode iniciar com 1 uso por código',
+                                prefixIcon: Icon(Icons.repeat_outlined),
                               ),
                               onChanged: (value) {
                                 final parsed = int.tryParse(value);
@@ -228,18 +264,21 @@ class _ProjectMembersScreenState extends State<ProjectMembersScreen> {
                                 _maxUses = parsed;
                               },
                             ),
-                            const SizedBox(height: 10),
-                            Align(
-                              alignment: Alignment.centerRight,
+                            const SizedBox(height: 12),
+                            SizedBox(
+                              width: double.infinity,
                               child: FilledButton.icon(
                                 onPressed: _submitting ? null : _createAccessCode,
                                 icon: _submitting
                                     ? const SizedBox(
                                         width: 14,
                                         height: 14,
-                                        child: CircularProgressIndicator(strokeWidth: 2),
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          color: Colors.white,
+                                        ),
                                       )
-                                    : const Icon(Icons.vpn_key_outlined),
+                                    : const Icon(Icons.add_link),
                                 label: const Text('Gerar código'),
                               ),
                             ),
@@ -248,105 +287,267 @@ class _ProjectMembersScreenState extends State<ProjectMembersScreen> {
                       ),
                     ),
                     const SizedBox(height: 12),
-                    Text(
-                      'Códigos ativos',
-                      style: theme.textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    if (_activeCodes.isEmpty)
-                      Text(
-                        'Sem códigos ativos no momento.',
-                        style: TextStyle(color: scheme.onSurfaceVariant),
-                      )
-                    else
-                      ..._activeCodes.map(
-                        (code) => Card(
-                          child: ListTile(
-                            leading: const Icon(Icons.qr_code_2_outlined),
-                            title: Text(code.code),
-                            subtitle: Text(
-                              'Papel: ${_roleLabel(code.role)} • Usos: ${code.usedCount}/${code.maxUses} • Expira: ${code.expiresAt == null ? 'Sem expiração' : '${code.expiresAt!.day.toString().padLeft(2, '0')}/${code.expiresAt!.month.toString().padLeft(2, '0')}/${code.expiresAt!.year}'}',
+
+                    // ── Códigos ativos ────────────────────────────────────
+                    Card(
+                      child: Padding(
+                        padding: const EdgeInsets.all(14),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            SectionHeader(
+                              icon: Icons.qr_code_2_outlined,
+                              title: 'Códigos ativos',
+                              color: appColors.warning,
+                              trailing: StatusBadge(
+                                label: '${_activeCodes.length}',
+                                color: appColors.warning,
+                              ),
                             ),
-                            trailing: IconButton(
-                              tooltip: 'Copiar código',
-                              icon: const Icon(Icons.copy_outlined),
-                              onPressed: () {
-                                Clipboard.setData(ClipboardData(text: code.code));
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(content: Text('Código ${code.code} copiado.')),
+                            const SizedBox(height: 10),
+                            if (_activeCodes.isEmpty)
+                              EmptyStateHint(
+                                icon: Icons.qr_code_2_outlined,
+                                message: 'Sem códigos ativos no momento.',
+                              )
+                            else
+                              ..._activeCodes.map((code) {
+                                final role = projectRoleVisual(context, code.role);
+                                return Padding(
+                                  padding: const EdgeInsets.symmetric(vertical: 5),
+                                  child: Row(
+                                    children: [
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 10,
+                                          vertical: 8,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: appColors.surfaceAlt,
+                                          borderRadius: BorderRadius.circular(8),
+                                          border: Border.all(color: appColors.border),
+                                        ),
+                                        child: Text(
+                                          code.code,
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.w800,
+                                            letterSpacing: 0.4,
+                                            fontFamily: 'monospace',
+                                            color: appColors.textPrimary,
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 10),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            StatusBadge(
+                                              label: role.label,
+                                              color: role.color,
+                                              icon: role.icon,
+                                            ),
+                                            const SizedBox(height: 4),
+                                            Text(
+                                              'Usos: ${code.usedCount}/${code.maxUses} • '
+                                              '${code.expiresAt == null ? 'Sem expiração' : 'Expira ${_formatDate(code.expiresAt!)}'}',
+                                              style: TextStyle(
+                                                fontSize: 11.5,
+                                                color: appColors.textSecondary,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      IconButton(
+                                        tooltip: 'Copiar código',
+                                        icon: const Icon(Icons.copy_outlined, size: 19),
+                                        onPressed: () {
+                                          Clipboard.setData(ClipboardData(text: code.code));
+                                          ScaffoldMessenger.of(context).showSnackBar(
+                                            SnackBar(content: Text('Código ${code.code} copiado.')),
+                                          );
+                                        },
+                                      ),
+                                    ],
+                                  ),
                                 );
-                              },
-                            ),
-                          ),
+                              }),
+                          ],
                         ),
                       ),
-                    const SizedBox(height: 12),
-                    Text(
-                      'Membros vinculados',
-                      style: theme.textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
                     ),
-                    const SizedBox(height: 8),
-                    if (_memberships.isEmpty)
-                      Text(
-                        'Nenhum membro encontrado para esta obra.',
-                        style: TextStyle(color: scheme.onSurfaceVariant),
-                      )
-                    else
-                      ..._memberships.map((membership) {
-                        final name = _memberNames[membership.userId];
-                        final email = _memberEmails[membership.userId];
-                        final label = name == null || name.trim().isEmpty
-                            ? 'UID ${membership.userId.length > 8 ? membership.userId.substring(0, 8) : membership.userId}'
-                            : name;
-                        final subtitleParts = <String>[
-                          if (email != null && email.trim().isNotEmpty) email.trim(),
-                          'Papel: ${_roleLabel(membership.role)}',
-                          membership.isActive ? 'Ativo' : 'Inativo',
-                        ];
-                        return Card(
-                          child: ListTile(
-                            leading: const Icon(Icons.person_outline),
-                            title: Text(label),
-                            subtitle: Text(subtitleParts.join(' • ')),
-                            trailing: membership.isActive
-                                ? const Icon(Icons.check_circle_outline, color: Colors.green)
-                                : const Icon(Icons.block_outlined, color: Colors.orange),
-                          ),
-                        );
-                      }),
                     const SizedBox(height: 12),
-                    Text(
-                      'Convites por e-mail (legado)',
-                      style: theme.textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    if (_pendingInvites.isEmpty)
-                      Text(
-                        'Sem convites pendentes.',
-                        style: TextStyle(color: scheme.onSurfaceVariant),
-                      )
-                    else
-                      ..._pendingInvites.map(
-                        (invite) => Card(
-                          child: ListTile(
-                            leading: const Icon(Icons.mail_outline),
-                            title: Text(invite.email),
-                            subtitle: Text(
-                              'Papel: ${_roleLabel(invite.role)} • ${invite.pendingSync ? 'Pendente sync' : 'Sincronizado'}',
+
+                    // ── Membros vinculados ────────────────────────────────
+                    Card(
+                      child: Padding(
+                        padding: const EdgeInsets.all(14),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            SectionHeader(
+                              icon: Icons.groups_outlined,
+                              title: 'Membros vinculados',
+                              color: appColors.success,
+                              trailing: StatusBadge(
+                                label: '${_memberships.length}',
+                                color: appColors.success,
+                              ),
                             ),
-                            trailing: Icon(
-                              invite.pendingSync ? Icons.cloud_off_outlined : Icons.schedule,
-                              color: invite.pendingSync ? Colors.orange : scheme.primary,
-                            ),
-                          ),
+                            const SizedBox(height: 10),
+                            if (_memberships.isEmpty)
+                              EmptyStateHint(
+                                icon: Icons.person_search_outlined,
+                                message: 'Nenhum membro encontrado para esta obra.',
+                              )
+                            else
+                              ..._memberships.map((membership) {
+                                final name = _memberNames[membership.userId];
+                                final email = _memberEmails[membership.userId];
+                                final label = name == null || name.trim().isEmpty
+                                    ? (email ?? membership.userId)
+                                    : name;
+                                final role = projectRoleVisual(context, membership.role);
+
+                                return Padding(
+                                  padding: const EdgeInsets.symmetric(vertical: 6),
+                                  child: Row(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      InitialsAvatar(
+                                        label: label,
+                                        background: role.color.withValues(alpha: 0.14),
+                                        foreground: role.color,
+                                      ),
+                                      const SizedBox(width: 12),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              label,
+                                              style: TextStyle(
+                                                fontWeight: FontWeight.w700,
+                                                color: appColors.textPrimary,
+                                              ),
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                            if (email != null &&
+                                                email.trim().isNotEmpty &&
+                                                email != label)
+                                              Text(
+                                                email,
+                                                style: TextStyle(
+                                                  fontSize: 12,
+                                                  color: appColors.textSecondary,
+                                                ),
+                                                overflow: TextOverflow.ellipsis,
+                                              ),
+                                            const SizedBox(height: 5),
+                                            Wrap(
+                                              spacing: 6,
+                                              runSpacing: 4,
+                                              children: [
+                                                StatusBadge(
+                                                  label: role.label,
+                                                  color: role.color,
+                                                  icon: role.icon,
+                                                ),
+                                                StatusBadge(
+                                                  label: membership.isActive ? 'Ativo' : 'Inativo',
+                                                  color: membership.isActive
+                                                      ? appColors.success
+                                                      : appColors.textSecondary,
+                                                  icon: membership.isActive
+                                                      ? Icons.check_circle_outline
+                                                      : Icons.block_outlined,
+                                                ),
+                                              ],
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              }),
+                          ],
                         ),
                       ),
+                    ),
+                    const SizedBox(height: 12),
+
+                    // ── Convites por e-mail (legado) ──────────────────────
+                    Card(
+                      child: Padding(
+                        padding: const EdgeInsets.all(14),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            SectionHeader(
+                              icon: Icons.mail_outline,
+                              title: 'Convites por e-mail',
+                              color: appColors.textSecondary,
+                            ),
+                            const SizedBox(height: 10),
+                            if (_pendingInvites.isEmpty)
+                              EmptyStateHint(
+                                icon: Icons.mail_outline,
+                                message: 'Sem convites pendentes.',
+                              )
+                            else
+                              ..._pendingInvites.map((invite) {
+                                final role = projectRoleVisual(context, invite.role);
+                                return Padding(
+                                  padding: const EdgeInsets.symmetric(vertical: 5),
+                                  child: Row(
+                                    children: [
+                                      InitialsAvatar(
+                                        label: invite.email,
+                                        background: appColors.surfaceAlt,
+                                        foreground: appColors.textSecondary,
+                                        radius: 16,
+                                      ),
+                                      const SizedBox(width: 10),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              invite.email,
+                                              style: TextStyle(
+                                                fontWeight: FontWeight.w600,
+                                                color: appColors.textPrimary,
+                                              ),
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                            const SizedBox(height: 3),
+                                            StatusBadge(
+                                              label: role.label,
+                                              color: role.color,
+                                              icon: role.icon,
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      Icon(
+                                        invite.pendingSync
+                                            ? Icons.cloud_off_outlined
+                                            : Icons.schedule,
+                                        size: 18,
+                                        color: invite.pendingSync
+                                            ? appColors.warning
+                                            : appColors.selected,
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              }),
+                          ],
+                        ),
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -354,4 +555,3 @@ class _ProjectMembersScreenState extends State<ProjectMembersScreen> {
     );
   }
 }
-
