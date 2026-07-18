@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "1073451175687",
+    "project_id": "obra-check-91f8a",
+    "storage_bucket": "obra-check-91f8a.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1073451175687:android:6ff641b5f57692b6b57fa2",
+        "android_client_info": {
+          "package_name": "com.example.obra_check"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "1073451175687-nrdtv2sott6u072ncnlhm02f481qqmud.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA8zwoLSeAgRM_sz6F2YqQ1salj69_z1MI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1073451175687-nrdtv2sott6u072ncnlhm02f481qqmud.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -1,0 +1,68 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── Dados de usuário ─────────────────────────────────────────────────────
+    match /users/{userId} {
+      allow create: if request.auth != null;
+      allow read, update: if request.auth != null && request.auth.uid == userId;
+
+      match /project_memberships/{membershipId} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
+    }
+
+    // ── Gestão de projetos ────────────────────────────────────────────────────
+    // Qualquer usuário autenticado pode ler projetos (necessário após consumir
+    // o código de acesso para hidratar o contexto do projeto).
+    match /projects/{projectId} {
+      allow read, write: if request.auth != null;
+
+      match /access_codes/{codeId} {
+        allow read, write: if request.auth != null;
+      }
+
+      match /pending_invites/{inviteId} {
+        allow read, write: if request.auth != null;
+      }
+    }
+
+    // Permite collectionGroup queries em access_codes e pending_invites.
+    match /{path=**}/access_codes/{codeId} {
+      allow read: if request.auth != null;
+    }
+    match /{path=**}/pending_invites/{inviteId} {
+      allow read: if request.auth != null;
+    }
+
+    // ── Dados de obra (sync) ──────────────────────────────────────────────────
+    // O sync usa /obras/{obraCode}/... como caminho raiz.
+    match /obras/{obraCode} {
+      allow read, write: if request.auth != null;
+
+      match /inspections/{docId} {
+        allow read, write: if request.auth != null;
+      }
+
+      match /services/{docId} {
+        allow read, write: if request.auth != null;
+      }
+
+      match /companies/{docId} {
+        allow read, write: if request.auth != null;
+      }
+
+      match /diaries/{docId} {
+        allow read, write: if request.auth != null;
+      }
+
+      match /equipments/{docId} {
+        allow read, write: if request.auth != null;
+      }
+
+      match /movements/{docId} {
+        allow read, write: if request.auth != null;
+      }
+    }
+  }
+}

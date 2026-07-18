@@ -1,0 +1,42 @@
+{
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "obra-check-91f8a",
+          "appId": "1:1073451175687:android:6ff641b5f57692b6b57fa2",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "obra-check-91f8a",
+          "configurations": {
+            "android": "1:1073451175687:android:6ff641b5f57692b6b57fa2",
+            "ios": "1:1073451175687:ios:3b54713a9ec97c05b57fa2",
+            "macos": "1:1073451175687:ios:3b54713a9ec97c05b57fa2",
+            "web": "1:1073451175687:web:615a7f2062ae1960b57fa2",
+            "windows": "1:1073451175687:web:615a7f2062ae1960b57fa2"
+          }
+        }
+      }
+    }
+  },
+  "hosting": {
+    "public": "build/web",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ],
+    "rewrites": [
+      {
+        "source": "**",
+        "destination": "/index.html"
+      }
+    ]
+  },
+  "firestore": {
+    "rules": "firestore.rules"
+  }
+}
