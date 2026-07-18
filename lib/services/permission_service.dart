@@ -8,6 +8,7 @@ enum AppPermission {
   finalizeInspection,
   openNc,
   manageUsers,
+  manageConstrutoras,
 }
 
 class PermissionService {
@@ -29,6 +30,8 @@ class PermissionService {
         return _context.canOpenNcSync;
       case AppPermission.manageUsers:
         return _context.canManageUsersSync;
+      case AppPermission.manageConstrutoras:
+        return _context.isGlobalAdminSync;
     }
   }
 
@@ -44,6 +47,8 @@ class PermissionService {
         return 'Sem permissão para abrir NC nesta obra.';
       case AppPermission.manageUsers:
         return 'Sem permissão para gerenciar usuários nesta obra.';
+      case AppPermission.manageConstrutoras:
+        return 'Apenas o administrador do sistema gerencia construtoras.';
     }
   }
 

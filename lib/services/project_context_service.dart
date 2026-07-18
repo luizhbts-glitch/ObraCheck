@@ -4,10 +4,13 @@ import 'package:flutter/scheduler.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../models/project_record.dart';
+import '../models/user_org_membership.dart';
 import '../models/user_project_membership.dart';
 import '../models/project_access_code_record.dart';
+import '../utils/effective_role.dart';
 import '../utils/project_identity.dart';
 import 'auth_service.dart';
+import 'global_admin_service.dart';
 
 class ProjectContextService extends ChangeNotifier {
   ProjectContextService._();
@@ -23,6 +26,11 @@ class ProjectContextService extends ChangeNotifier {
       Hive.box<UserProjectMembership>('user_project_memberships');
   Box<ProjectAccessCodeRecord> get _accessCodes =>
       Hive.box<ProjectAccessCodeRecord>('project_access_codes');
+  // Box lazy (abre depois do boot essencial): sempre checar antes de usar.
+  Box<UserOrgMembership>? get _orgMemberships =>
+      Hive.isBoxOpen('user_org_memberships')
+          ? Hive.box<UserOrgMembership>('user_org_memberships')
+          : null;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   ProjectRecord? _currentProject;
@@ -43,15 +51,61 @@ class ProjectContextService extends ChangeNotifier {
   String get currentProjectNameSync => _currentProject?.name ?? 'Sem obra vinculada';
   String _currentUserId = '';
 
+  // Modo edição da elevação (admin global / diretoria). Estado de sessão,
+  // não persistido: toda sessão começa em visualização, por decisão de UX.
+  bool _orgEditMode = false;
+
+  bool get orgEditModeEnabled => _orgEditMode;
+
+  void setOrgEditMode(bool enabled) {
+    if (_orgEditMode == enabled) return;
+    _orgEditMode = enabled;
+    _notifySafely();
+  }
+
+  bool get isGlobalAdminSync =>
+      GlobalAdminService.instance.isGlobalAdminSyncFor(_currentUserId);
+
+  /// Construtoras em que o usuário atual é diretor ativo.
+  Set<String> diretorOrgIdsForCurrentUserSync() {
+    final uid = _currentUserId.trim();
+    final box = _orgMemberships;
+    if (uid.isEmpty || box == null) return const <String>{};
+    return box.values
+        .where((m) =>
+            m.isActive &&
+            m.userId == uid &&
+            UserOrgMembership.isDiretor(m.role) &&
+            m.orgId.trim().isNotEmpty)
+        .map((m) => m.orgId.trim())
+        .toSet();
+  }
+
+  bool get _isDiretorOfCurrentProjectOrgSync {
+    final orgId = _currentProject?.orgId.trim() ?? '';
+    if (orgId.isEmpty) return false;
+    return diretorOrgIdsForCurrentUserSync().contains(orgId);
+  }
+
+  /// O usuário tem acesso elevado à obra atual (admin global ou diretor da
+  /// construtora dona)? Usado pela UI pra exibir o toggle de modo edição.
+  bool get hasElevatedAccessSync =>
+      isGlobalAdminSync || _isDiretorOfCurrentProjectOrgSync;
+
   String get currentUserRoleInProjectSync {
     final userId = _currentUserId.trim();
     if (userId.isEmpty) return UserProjectMembership.roleViewer;
-    final role = membershipForUserProject(
-      userId: userId,
-      projectId: currentProjectIdSync,
-    )
-        ?.role;
-    return role ?? UserProjectMembership.roleViewer;
+    final direct = membershipForUserProject(
+          userId: userId,
+          projectId: currentProjectIdSync,
+        )?.role ??
+        UserProjectMembership.roleViewer;
+    return resolveEffectiveRole(
+      directRole: direct,
+      isGlobalAdmin: isGlobalAdminSync,
+      isDiretorOfOwningOrg: _isDiretorOfCurrentProjectOrgSync,
+      editModeEnabled: _orgEditMode,
+    );
   }
 
   bool get hasProjectAccessForCurrentUserSync {
@@ -102,16 +156,28 @@ class ProjectContextService extends ChangeNotifier {
     // Compatibilidade: sem usuário autenticado, mantém legado disponível.
     if (uid.isEmpty) return all;
 
+    // Admin global enxerga todas as obras.
+    if (isGlobalAdminSync) return all;
+
     final allowedIds = _memberships.values
         .where((m) => m.isActive && m.userId == uid)
         .map((m) => m.projectId)
         .toSet();
 
-    if (allowedIds.isEmpty) {
+    // Diretor enxerga todas as obras das construtoras dele, além das que
+    // tem vínculo direto.
+    final diretorOrgIds = diretorOrgIdsForCurrentUserSync();
+
+    if (allowedIds.isEmpty && diretorOrgIds.isEmpty) {
       return const <ProjectRecord>[];
     }
 
-    return all.where((p) => allowedIds.contains(p.id)).toList();
+    return all
+        .where((p) =>
+            allowedIds.contains(p.id) ||
+            (p.orgId.trim().isNotEmpty &&
+                diretorOrgIds.contains(p.orgId.trim())))
+        .toList();
   }
 
   Future<String> getCurrentProjectId() async {
@@ -183,6 +249,11 @@ class ProjectContextService extends ChangeNotifier {
 
     final projectIdsToFetch = <String>{};
 
+    // Status de admin global e vínculos de construtora fazem parte da
+    // mesma hidratação de sessão (falha remota mantém cache local).
+    await GlobalAdminService.instance.refresh();
+    await _refreshOrgMembershipsForUser(user.uid);
+
     try {
       final membershipsSnap = await _firestore
           .collection('users')
@@ -235,6 +306,31 @@ class ProjectContextService extends ChangeNotifier {
     }
 
     _notifySafely();
+  }
+
+  Future<void> _refreshOrgMembershipsForUser(String uid) async {
+    final box = _orgMemberships;
+    if (box == null) return;
+    try {
+      final snap = await _firestore
+          .collection('users')
+          .doc(uid)
+          .collection('org_memberships')
+          .get();
+      for (final doc in snap.docs) {
+        final data = Map<String, dynamic>.from(doc.data());
+        final rec = UserOrgMembership.fromMap({
+          ...data,
+          'id': data['id']?.toString().isNotEmpty == true ? data['id'] : doc.id,
+          'userId':
+              data['userId']?.toString().isNotEmpty == true ? data['userId'] : uid,
+        });
+        await box.put(rec.id, rec);
+      }
+    } catch (e) {
+      // Offline-first: mantém vínculos locais em caso de falha remota.
+      debugPrint('[ProjectContext] refreshOrgMemberships error: $e');
+    }
   }
 
   List<ProjectRecord> allProjects() {

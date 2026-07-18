@@ -27,7 +27,16 @@ class GlobalAdminService {
   bool get isGlobalAdminSync {
     final uid = _uid;
     if (uid == null || uid.isEmpty) return false;
-    return _prefs.get('$_prefsKeyPrefix$uid', defaultValue: false) == true;
+    return isGlobalAdminSyncFor(uid);
+  }
+
+  /// Variante por uid, sem tocar FirebaseAuth — usada pelo
+  /// ProjectContextService, que já mantém o uid da sessão.
+  bool isGlobalAdminSyncFor(String uid) {
+    if (uid.trim().isEmpty) return false;
+    if (!Hive.isBoxOpen('prefs')) return false;
+    return _prefs.get('$_prefsKeyPrefix${uid.trim()}', defaultValue: false) ==
+        true;
   }
 
   /// Consulta o Firestore e atualiza o cache. Chamar após login e no
