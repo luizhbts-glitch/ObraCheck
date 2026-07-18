@@ -2,13 +2,53 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    // ── Funções da hierarquia de acesso ──────────────────────────────────────
+    // admin global > diretoria da construtora > engenheiro da obra > equipe.
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // Cadastrado SOMENTE via console/Firebase Admin — nenhum cliente escreve.
+    function isGlobalAdmin() {
+      return isSignedIn() &&
+        exists(/databases/$(database)/documents/global_admins/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/global_admins/$(request.auth.uid)).data.get('isActive', true) == true;
+    }
+
+    // ── Admin global ─────────────────────────────────────────────────────────
+    // Escrita apenas fora do app (console). Cada usuário só lê o próprio doc,
+    // pro cache offline do GlobalAdminService.
+    match /global_admins/{userId} {
+      allow read: if isSignedIn() && request.auth.uid == userId;
+      allow write: if false;
+    }
+
+    // ── Construtoras ─────────────────────────────────────────────────────────
+    // Leitura por autenticados (diretoria hidrata o contexto); escrita só
+    // do admin global — ninguém cria/edita construtora pelo app comum.
+    match /construtoras/{orgId} {
+      allow read: if isSignedIn();
+      allow write: if isGlobalAdmin();
+    }
+
     // ── Dados de usuário ─────────────────────────────────────────────────────
     match /users/{userId} {
       allow create: if request.auth != null;
-      allow read, update: if request.auth != null && request.auth.uid == userId;
+      allow read: if request.auth != null &&
+        (request.auth.uid == userId || isGlobalAdmin());
+      allow update: if request.auth != null && request.auth.uid == userId;
 
       match /project_memberships/{membershipId} {
-        allow read, write: if request.auth != null && request.auth.uid == userId;
+        allow read, write: if request.auth != null &&
+          (request.auth.uid == userId || isGlobalAdmin());
+      }
+
+      // Vínculo de diretor: só o admin global concede/revoga. O próprio
+      // usuário apenas lê (hidratação de sessão). Impede autopromoção.
+      match /org_memberships/{membershipId} {
+        allow read: if request.auth != null &&
+          (request.auth.uid == userId || isGlobalAdmin());
+        allow write: if isGlobalAdmin();
       }
     }
 
@@ -37,6 +77,13 @@ service cloud.firestore {
 
     // ── Dados de obra (sync) ──────────────────────────────────────────────────
     // O sync usa /obras/{obraCode}/... como caminho raiz.
+    //
+    // ⚠️ GAP CONHECIDO (documentado em 2026-07-17): estas coleções ainda
+    // aceitam leitura/escrita de qualquer autenticado. O lockdown por
+    // membership exige testar com o emulador os fluxos legados (convite por
+    // código, membership com id não determinístico) antes de apertar — senão
+    // arrisca travar usuários reais em produção. Próximo passo do plano de
+    // controle de usuários.
     match /obras/{obraCode} {
       allow read, write: if request.auth != null;
 
