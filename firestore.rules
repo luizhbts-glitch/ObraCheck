@@ -56,7 +56,22 @@ service cloud.firestore {
     // Qualquer usuário autenticado pode ler projetos (necessário após consumir
     // o código de acesso para hidratar o contexto do projeto).
     match /projects/{projectId} {
-      allow read, write: if request.auth != null;
+      allow read: if request.auth != null;
+      allow create: if request.auth != null;
+      // 'code' e 'orgId' imutáveis por usuário comum (achado em 2026-07-17,
+      // ao construir a hierarquia de construtoras): sem esta trava, qualquer
+      // autenticado poderia reescrever o 'code' do PRÓPRIO projeto pra igualar
+      // o código de uma obra alheia — e, como /obras/{obraCode} hoje é aberto,
+      // isso já não escala privilégio sozinho, mas passaria a ser uma porta de
+      // sequestro assim que o lockdown de /obras/** (etapa 4b) mapear obraCode
+      // → projectId através deste doc. Travar 'orgId' também impede se
+      // autovincular a uma construtora que não é a sua. Admin global segue com
+      // poder total (correção legítima de dado).
+      allow update: if request.auth != null &&
+        (isGlobalAdmin() ||
+          (request.resource.data.code == resource.data.code &&
+           request.resource.data.get('orgId', '') == resource.data.get('orgId', '')));
+      allow delete: if isGlobalAdmin();
 
       match /access_codes/{codeId} {
         allow read, write: if request.auth != null;
