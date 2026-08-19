@@ -165,7 +165,8 @@ class SectionHeader extends StatelessWidget {
             ),
           ),
         ),
-        ?trailing,
+        // ignore: use_null_aware_elements — a sintaxe `?trailing` quebra o hive_generator (build_runner)
+        if (trailing != null) trailing!,
       ],
     );
   }

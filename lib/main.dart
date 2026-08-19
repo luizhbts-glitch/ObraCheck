@@ -17,10 +17,13 @@ import 'screens/visual_tower_map_screen.dart';
 import 'screens/empreiteiros_screen.dart';
 import 'screens/almoxarife_screen.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+import 'models/cargo_record.dart';
 import 'models/company_record.dart';
 import 'models/construtora_record.dart';
 import 'models/diary_record.dart';
+import 'models/employee_record.dart';
 import 'models/inspection_record.dart';
+import 'models/perfil_acesso_record.dart';
 import 'models/project_record.dart';
 import 'models/project_invite_record.dart';
 import 'models/project_access_code_record.dart';
@@ -111,6 +114,9 @@ Future<void> _openLazyBoxes() async {
   );
   await HiveBoxHelper.openBoxSafe<ConstrutoraRecord>('construtoras');
   await HiveBoxHelper.openBoxSafe<UserOrgMembership>('user_org_memberships');
+  await HiveBoxHelper.openBoxSafe<CargoRecord>('cargos');
+  await HiveBoxHelper.openBoxSafe<EmployeeRecord>('employees');
+  await HiveBoxHelper.openBoxSafe<PerfilAcessoRecord>('perfis_acesso');
   await HiveBoxHelper.openBoxRawSafe('project_settings');
   await HiveBoxHelper.openBoxRawSafe('equipments');
   await HiveBoxHelper.openBoxRawSafe('equipment_movements');
@@ -141,6 +147,11 @@ void _registerHiveAdapters() {
   );
   _safeRegisterAdapter(() => Hive.registerAdapter(ConstrutoraRecordAdapter()));
   _safeRegisterAdapter(() => Hive.registerAdapter(UserOrgMembershipAdapter()));
+  _safeRegisterAdapter(() => Hive.registerAdapter(CargoRecordAdapter()));
+  _safeRegisterAdapter(() => Hive.registerAdapter(EmployeeRecordAdapter()));
+  _safeRegisterAdapter(() => Hive.registerAdapter(PermissaoItemAdapter()));
+  _safeRegisterAdapter(() => Hive.registerAdapter(PerfilAcessoRecordAdapter()));
+  _safeRegisterAdapter(() => Hive.registerAdapter(PermissaoOverrideAdapter()));
 }
 
 void _safeRegisterAdapter(void Function() register) {
