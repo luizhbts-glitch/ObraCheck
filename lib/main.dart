@@ -18,12 +18,18 @@ import 'screens/empreiteiros_screen.dart';
 import 'screens/almoxarife_screen.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'models/cargo_record.dart';
+import 'models/centro_custo_record.dart';
 import 'models/company_record.dart';
 import 'models/construtora_record.dart';
+import 'models/cotacao_record.dart';
 import 'models/diary_record.dart';
 import 'models/employee_record.dart';
+import 'models/fornecedor_record.dart';
 import 'models/inspection_record.dart';
+import 'models/material_catalogo_record.dart';
+import 'models/pedido_compra_record.dart';
 import 'models/perfil_acesso_record.dart';
+import 'models/requisicao_compra_record.dart';
 import 'models/project_record.dart';
 import 'models/project_invite_record.dart';
 import 'models/project_access_code_record.dart';
@@ -117,6 +123,12 @@ Future<void> _openLazyBoxes() async {
   await HiveBoxHelper.openBoxSafe<CargoRecord>('cargos');
   await HiveBoxHelper.openBoxSafe<EmployeeRecord>('employees');
   await HiveBoxHelper.openBoxSafe<PerfilAcessoRecord>('perfis_acesso');
+  await HiveBoxHelper.openBoxSafe<FornecedorRecord>('fornecedores');
+  await HiveBoxHelper.openBoxSafe<MaterialCatalogoRecord>('materiais_catalogo');
+  await HiveBoxHelper.openBoxSafe<CentroCustoRecord>('centros_custo');
+  await HiveBoxHelper.openBoxSafe<RequisicaoCompraRecord>('requisicoes_compra');
+  await HiveBoxHelper.openBoxSafe<CotacaoRecord>('cotacoes');
+  await HiveBoxHelper.openBoxSafe<PedidoCompraRecord>('pedidos_compra');
   await HiveBoxHelper.openBoxRawSafe('project_settings');
   await HiveBoxHelper.openBoxRawSafe('equipments');
   await HiveBoxHelper.openBoxRawSafe('equipment_movements');
@@ -152,6 +164,18 @@ void _registerHiveAdapters() {
   _safeRegisterAdapter(() => Hive.registerAdapter(PermissaoItemAdapter()));
   _safeRegisterAdapter(() => Hive.registerAdapter(PerfilAcessoRecordAdapter()));
   _safeRegisterAdapter(() => Hive.registerAdapter(PermissaoOverrideAdapter()));
+  _safeRegisterAdapter(() => Hive.registerAdapter(FornecedorRecordAdapter()));
+  _safeRegisterAdapter(
+    () => Hive.registerAdapter(MaterialCatalogoRecordAdapter()),
+  );
+  _safeRegisterAdapter(() => Hive.registerAdapter(CentroCustoRecordAdapter()));
+  _safeRegisterAdapter(() => Hive.registerAdapter(ItemRequisicaoAdapter()));
+  _safeRegisterAdapter(
+    () => Hive.registerAdapter(RequisicaoCompraRecordAdapter()),
+  );
+  _safeRegisterAdapter(() => Hive.registerAdapter(ItemCotacaoAdapter()));
+  _safeRegisterAdapter(() => Hive.registerAdapter(CotacaoRecordAdapter()));
+  _safeRegisterAdapter(() => Hive.registerAdapter(PedidoCompraRecordAdapter()));
 }
 
 void _safeRegisterAdapter(void Function() register) {
