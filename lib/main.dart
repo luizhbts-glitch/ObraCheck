@@ -50,6 +50,7 @@ import 'services/project_members_service.dart';
 import 'services/user_profile_service.dart';
 import 'screens/compras_home_screen.dart';
 import 'screens/construtoras_admin_screen.dart';
+import 'screens/despesas_screen.dart';
 import 'screens/funcionarios_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/project_members_screen.dart';
@@ -1295,6 +1296,19 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                 );
               },
               icon: const Icon(Icons.badge_outlined),
+            ),
+            IconButton(
+              tooltip: 'Despesas',
+              onPressed: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => DespesasScreen(
+                      orgId: _projectContext.currentProject!.orgId,
+                    ),
+                  ),
+                );
+              },
+              icon: const Icon(Icons.receipt_long_outlined),
             ),
           ],
           if (hasProject)
