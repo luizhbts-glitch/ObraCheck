@@ -43,7 +43,9 @@ import 'services/sync_orchestrator.dart';
 import 'services/project_context_service.dart';
 import 'services/project_members_service.dart';
 import 'services/user_profile_service.dart';
+import 'screens/compras_home_screen.dart';
 import 'screens/construtoras_admin_screen.dart';
+import 'screens/funcionarios_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/project_members_screen.dart';
 import 'screens/project_settings_screen.dart';
@@ -1242,6 +1244,33 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
               },
               icon: const Icon(Icons.admin_panel_settings_outlined),
             ),
+          // Atalhos temporários do ERP (Compras/RH) até o menu lateral
+          // definitivo existir (Fase 1a do plano ERP) — depois viram
+          // sub-itens dele, não ficam aqui pra sempre.
+          if (hasProject && (_projectContext.currentProject?.orgId ?? '').isNotEmpty) ...[
+            IconButton(
+              tooltip: 'Compras',
+              onPressed: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const ComprasHomeScreen()),
+                );
+              },
+              icon: const Icon(Icons.shopping_cart_outlined),
+            ),
+            IconButton(
+              tooltip: 'Funcionários (RH)',
+              onPressed: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => FuncionariosScreen(
+                      orgId: _projectContext.currentProject!.orgId,
+                    ),
+                  ),
+                );
+              },
+              icon: const Icon(Icons.badge_outlined),
+            ),
+          ],
           if (hasProject)
             IconButton(
               tooltip: 'Trocar obra',
