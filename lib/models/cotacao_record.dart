@@ -19,11 +19,18 @@ class ItemCotacao {
   @HiveField(3)
   final double valorUnitario;
 
+  /// Herdado do `ItemRequisicao` de origem, quando o item veio do
+  /// catálogo — usado pra atualizar `custoMedioReferencia`/`ultimaCompraEm`
+  /// no `MaterialCatalogoRecord` quando o pedido é aprovado.
+  @HiveField(4)
+  final String? materialCatalogoId;
+
   const ItemCotacao({
     required this.descricao,
     required this.quantidade,
     this.unidade = '',
     this.valorUnitario = 0,
+    this.materialCatalogoId,
   });
 
   double get valorTotal {
@@ -37,6 +44,7 @@ class ItemCotacao {
       'quantidade': quantidade,
       'unidade': unidade,
       'valorUnitario': valorUnitario,
+      'materialCatalogoId': materialCatalogoId,
     };
   }
 
@@ -46,6 +54,9 @@ class ItemCotacao {
       quantidade: (map['quantidade'] ?? '').toString(),
       unidade: (map['unidade'] ?? '').toString(),
       valorUnitario: (map['valorUnitario'] as num?)?.toDouble() ?? 0,
+      materialCatalogoId: map['materialCatalogoId']?.toString().isNotEmpty == true
+          ? map['materialCatalogoId'].toString()
+          : null,
     );
   }
 }

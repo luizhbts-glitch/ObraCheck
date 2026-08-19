@@ -21,13 +21,14 @@ class ItemCotacaoAdapter extends TypeAdapter<ItemCotacao> {
       quantidade: fields[1] as String,
       unidade: fields[2] as String,
       valorUnitario: fields[3] as double,
+      materialCatalogoId: fields[4] as String?,
     );
   }
 
   @override
   void write(BinaryWriter writer, ItemCotacao obj) {
     writer
-      ..writeByte(4)
+      ..writeByte(5)
       ..writeByte(0)
       ..write(obj.descricao)
       ..writeByte(1)
@@ -35,7 +36,9 @@ class ItemCotacaoAdapter extends TypeAdapter<ItemCotacao> {
       ..writeByte(2)
       ..write(obj.unidade)
       ..writeByte(3)
-      ..write(obj.valorUnitario);
+      ..write(obj.valorUnitario)
+      ..writeByte(4)
+      ..write(obj.materialCatalogoId);
   }
 
   @override
