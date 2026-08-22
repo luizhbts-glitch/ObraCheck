@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../services/auth_service.dart';
 import '../services/employee_service.dart';
 import '../services/project_context_service.dart';
 import '../theme/app_colors.dart';
@@ -37,6 +38,8 @@ class _FuncionariosScreenState extends State<FuncionariosScreen> {
     var cargoId = cargos.first.id;
     String? projectId; // null = Adm (escritório)
     String? avaliadorId;
+    var essaContaEMinha = false;
+    final meuUid = AuthService.instance.currentUser?.uid;
 
     final result = await showDialog<bool>(
       context: context,
@@ -91,6 +94,18 @@ class _FuncionariosScreenState extends State<FuncionariosScreen> {
                   ],
                   onChanged: (value) => setDialogState(() => avaliadorId = value),
                 ),
+                if (meuUid != null) ...[
+                  const SizedBox(height: 4),
+                  CheckboxListTile(
+                    contentPadding: EdgeInsets.zero,
+                    controlAffinity: ListTileControlAffinity.leading,
+                    title: const Text('Essa conta é minha'),
+                    subtitle: const Text('Vincula esse funcionário à sua conta logada'),
+                    value: essaContaEMinha,
+                    onChanged: (value) =>
+                        setDialogState(() => essaContaEMinha = value ?? false),
+                  ),
+                ],
               ],
             ),
           ),
@@ -115,13 +130,24 @@ class _FuncionariosScreenState extends State<FuncionariosScreen> {
       cargoId: cargoId,
       nome: nomeController.text,
       avaliadorEmployeeId: avaliadorId,
+      userId: essaContaEMinha ? meuUid : null,
     );
     if (mounted) setState(() {});
+  }
+
+  Future<void> _vincularMinhaConta(String employeeId) async {
+    await _service.vincularContaAtual(employeeId);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Conta vinculada.')),
+    );
+    setState(() {});
   }
 
   @override
   Widget build(BuildContext context) {
     final appColors = context.appColors;
+    final meuUid = AuthService.instance.currentUser?.uid;
     final todos = _service.funcionarios(widget.orgId, onlyActive: false);
     final filtrados = _busca.trim().isEmpty
         ? todos
@@ -169,29 +195,59 @@ class _FuncionariosScreenState extends State<FuncionariosScreen> {
                           ? 'Adm'
                           : (projetosById[funcionario.projectId] ?? funcionario.projectId);
                       final avaliador = _service.porId(funcionario.avaliadorEmployeeId);
+                      final souEu = meuUid != null && funcionario.userId == meuUid;
+                      final semConta = funcionario.userId == null || funcionario.userId!.isEmpty;
 
                       return Card(
-                        child: ListTile(
-                          leading: InitialsAvatar(
-                            label: funcionario.nome,
-                            background: appColors.selected.withValues(alpha: 0.14),
-                            foreground: appColors.selected,
-                          ),
-                          title: Text(funcionario.nome),
-                          subtitle: Text(
-                            '${cargo?.nome ?? 'Sem cargo'} · $obraNome'
-                            '${avaliador != null ? ' · resp.: ${avaliador.nome}' : ''}',
-                          ),
-                          trailing: Switch(
-                            value: funcionario.isActive,
-                            onChanged: (value) async {
-                              await _service.definirAtivo(
-                                employeeId: funcionario.id,
-                                isActive: value,
-                              );
-                              if (mounted) setState(() {});
-                            },
-                          ),
+                        child: Column(
+                          children: [
+                            ListTile(
+                              leading: InitialsAvatar(
+                                label: funcionario.nome,
+                                background: appColors.selected.withValues(alpha: 0.14),
+                                foreground: appColors.selected,
+                              ),
+                              title: Row(
+                                children: [
+                                  Flexible(child: Text(funcionario.nome)),
+                                  if (souEu) ...[
+                                    const SizedBox(width: 6),
+                                    StatusBadge(
+                                      label: 'Você',
+                                      color: appColors.success,
+                                      icon: Icons.check_circle_outline,
+                                    ),
+                                  ],
+                                ],
+                              ),
+                              subtitle: Text(
+                                '${cargo?.nome ?? 'Sem cargo'} · $obraNome'
+                                '${avaliador != null ? ' · resp.: ${avaliador.nome}' : ''}',
+                              ),
+                              trailing: Switch(
+                                value: funcionario.isActive,
+                                onChanged: (value) async {
+                                  await _service.definirAtivo(
+                                    employeeId: funcionario.id,
+                                    isActive: value,
+                                  );
+                                  if (mounted) setState(() {});
+                                },
+                              ),
+                            ),
+                            if (semConta && meuUid != null)
+                              Padding(
+                                padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
+                                child: Align(
+                                  alignment: Alignment.centerRight,
+                                  child: OutlinedButton.icon(
+                                    onPressed: () => _vincularMinhaConta(funcionario.id),
+                                    icon: const Icon(Icons.link, size: 16),
+                                    label: const Text('Essa conta é minha'),
+                                  ),
+                                ),
+                              ),
+                          ],
                         ),
                       );
                     },
