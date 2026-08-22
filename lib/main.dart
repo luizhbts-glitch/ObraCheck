@@ -26,6 +26,7 @@ import 'models/descritivo_servico_record.dart';
 import 'models/despesa_record.dart';
 import 'models/diary_record.dart';
 import 'models/employee_record.dart';
+import 'models/equipamento_estoque_record.dart';
 import 'models/fornecedor_record.dart';
 import 'models/inspection_record.dart';
 import 'models/material_catalogo_record.dart';
@@ -142,6 +143,7 @@ Future<void> _openLazyBoxes() async {
   await HiveBoxHelper.openBoxSafe<MedicaoEmpreiteiroRecord>('medicoes_empreiteiro');
   await HiveBoxHelper.openBoxSafe<RecebimentoMaterialRecord>('recebimentos_material');
   await HiveBoxHelper.openBoxSafe<DespesaRecord>('despesas');
+  await HiveBoxHelper.openBoxSafe<EquipamentoEstoqueRecord>('equipamentos_estoque');
   await HiveBoxHelper.openBoxRawSafe('project_settings');
   await HiveBoxHelper.openBoxRawSafe('equipments');
   await HiveBoxHelper.openBoxRawSafe('equipment_movements');
@@ -205,6 +207,7 @@ void _registerHiveAdapters() {
     () => Hive.registerAdapter(RecebimentoMaterialRecordAdapter()),
   );
   _safeRegisterAdapter(() => Hive.registerAdapter(DespesaRecordAdapter()));
+  _safeRegisterAdapter(() => Hive.registerAdapter(EquipamentoEstoqueRecordAdapter()));
 }
 
 void _safeRegisterAdapter(void Function() register) {

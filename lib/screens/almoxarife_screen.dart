@@ -5,6 +5,8 @@ import '../services/sync_orchestrator.dart';
 import '../utils/project_identity.dart';
 import '../utils/project_scope.dart';
 import '../utils/similar_name.dart';
+import '../utils/text_case.dart';
+import 'estoque_equipamentos_screen.dart';
 
 class AlmoxarifeScreen extends StatefulWidget {
   const AlmoxarifeScreen({super.key});
@@ -39,16 +41,6 @@ class _AlmoxarifeScreenState extends State<AlmoxarifeScreen> {
     _pendingSearchCtrl.dispose();
     _historyNameCtrl.dispose();
     super.dispose();
-  }
-
-  /// Padroniza texto digitado (nome de equipamento/pessoa) para
-  /// "Primeira letra maiúscula, resto minúsculo". Aplicado só a texto
-  /// novo digitado nesta tela — não migra registros já existentes.
-  String _toSentenceCase(String input) {
-    final trimmed = input.trim().replaceAll(RegExp(r'\s+'), ' ');
-    if (trimmed.isEmpty) return trimmed;
-    final lower = trimmed.toLowerCase();
-    return lower[0].toUpperCase() + lower.substring(1);
   }
 
   String _equipmentCodeOf(Map<String, dynamic> equipment) {
@@ -569,7 +561,7 @@ class _AlmoxarifeScreenState extends State<AlmoxarifeScreen> {
     qtdCtrl.dispose();
     if (saved == null) return;
 
-    final nome = _toSentenceCase((saved['nome'] ?? '').toString());
+    final nome = toSentenceCase((saved['nome'] ?? '').toString());
     final qty = (saved['quantidade'] as int?) ?? 1;
 
     if (initial != null) {
@@ -916,7 +908,7 @@ class _AlmoxarifeScreenState extends State<AlmoxarifeScreen> {
 
     if (ok != true) return;
 
-    final responsavelNormalizado = _toSentenceCase(responsavel);
+    final responsavelNormalizado = toSentenceCase(responsavel);
     final batchId = 'cartao_${DateTime.now().microsecondsSinceEpoch}';
     final currentProjectId = await ProjectContextService.instance.getCurrentProjectId();
     final createdAt = DateTime.now();
@@ -1009,7 +1001,7 @@ class _AlmoxarifeScreenState extends State<AlmoxarifeScreen> {
     }
 
     final currentProjectId = await ProjectContextService.instance.getCurrentProjectId();
-    final quemDevolveu = _toSentenceCase(ctrl.text);
+    final quemDevolveu = toSentenceCase(ctrl.text);
     final createdAt = DateTime.now();
     for (var i = 0; i < qty; i++) {
       final pendingMovement = units[i];
@@ -1391,7 +1383,20 @@ class _AlmoxarifeScreenState extends State<AlmoxarifeScreen> {
           }).toList();
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Almoxarife • Equipamentos')),
+      appBar: AppBar(
+        title: const Text('Almoxarife • Equipamentos'),
+        actions: [
+          IconButton(
+            tooltip: 'Estoque de equipamentos',
+            icon: const Icon(Icons.inventory_2_outlined),
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const EstoqueEquipamentosScreen()),
+              );
+            },
+          ),
+        ],
+      ),
       floatingActionButton: SafeArea(
         minimum: const EdgeInsets.only(right: 4, bottom: 4),
         child: FloatingActionButton.extended(
