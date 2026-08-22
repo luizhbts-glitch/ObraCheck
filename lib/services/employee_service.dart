@@ -4,6 +4,7 @@ import 'package:hive/hive.dart';
 
 import '../models/cargo_record.dart';
 import '../models/employee_record.dart';
+import '../models/perfil_acesso_record.dart';
 import 'auth_service.dart';
 import 'project_context_service.dart';
 
@@ -150,6 +151,65 @@ class EmployeeService {
     final employee = _employees.get(employeeId);
     if (employee == null) return;
     final atualizado = employee.copyWith(userId: uid, updatedAt: DateTime.now());
+    await _employees.put(atualizado.id, atualizado);
+    await _mirror(
+      'construtoras/${atualizado.orgId}/funcionarios/${atualizado.id}',
+      atualizado.toMap(),
+    );
+  }
+
+  // ── Permissões (edição direta por pessoa) ───────────────────────────
+  //
+  // Decisão de 2026-08-22: em vez de obrigar todo mundo a ter um "Perfil
+  // de Acesso" nomeado, a edição de permissão é direto por pessoa —
+  // `permissaoOverrides` é o mecanismo principal, não um ajuste fino em
+  // cima de um perfil (que continua existindo como molde opcional, mas
+  // esta tela não lida com ele).
+
+  /// Define (ou revoga) uma permissão pontual do funcionário. Sempre
+  /// grava um override explícito — não existe "voltar pro perfil" aqui,
+  /// já que perfil não é o mecanismo principal.
+  Future<void> definirPermissao({
+    required String employeeId,
+    required String modulo,
+    required String entidade,
+    required String acao,
+    required bool liberado,
+    required String concedidoPorEmployeeId,
+  }) async {
+    final employee = _employees.get(employeeId);
+    if (employee == null) return;
+    final chave = '$modulo.$entidade.$acao';
+    final overrides = employee.permissaoOverrides
+        .where((o) => o.permissao.chave != chave)
+        .toList()
+      ..add(PermissaoOverride(
+        permissao: PermissaoItem(modulo: modulo, entidade: entidade, acao: acao),
+        liberado: liberado,
+        concedidoPorEmployeeId: concedidoPorEmployeeId,
+        concedidoEm: DateTime.now(),
+      ));
+    final atualizado = employee.copyWith(
+      permissaoOverrides: overrides,
+      updatedAt: DateTime.now(),
+    );
+    await _employees.put(atualizado.id, atualizado);
+    await _mirror(
+      'construtoras/${atualizado.orgId}/funcionarios/${atualizado.id}',
+      atualizado.toMap(),
+    );
+  }
+
+  /// Remove todos os ajustes de permissão do funcionário — volta ao
+  /// estado "sem override nenhum" (efetivamente sem nenhuma permissão
+  /// granular, já que não há perfil por trás disso hoje).
+  Future<void> limparPermissoes(String employeeId) async {
+    final employee = _employees.get(employeeId);
+    if (employee == null) return;
+    final atualizado = employee.copyWith(
+      permissaoOverrides: const [],
+      updatedAt: DateTime.now(),
+    );
     await _employees.put(atualizado.id, atualizado);
     await _mirror(
       'construtoras/${atualizado.orgId}/funcionarios/${atualizado.id}',

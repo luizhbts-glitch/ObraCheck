@@ -6,6 +6,7 @@ import '../services/project_context_service.dart';
 import '../theme/app_colors.dart';
 import '../widgets/admin_ui.dart';
 import 'cargos_screen.dart';
+import 'permissoes_funcionario_screen.dart';
 
 /// RH > Funcionários. Campos confirmados contra o sistema de referência
 /// (L7) em 2026-07-18: ID, Obra (ou "Adm"), Cargo, Nome, Avaliador, Status.
@@ -224,15 +225,34 @@ class _FuncionariosScreenState extends State<FuncionariosScreen> {
                                 '${cargo?.nome ?? 'Sem cargo'} · $obraNome'
                                 '${avaliador != null ? ' · resp.: ${avaliador.nome}' : ''}',
                               ),
-                              trailing: Switch(
-                                value: funcionario.isActive,
-                                onChanged: (value) async {
-                                  await _service.definirAtivo(
-                                    employeeId: funcionario.id,
-                                    isActive: value,
-                                  );
-                                  if (mounted) setState(() {});
-                                },
+                              trailing: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  if (ProjectContextService.instance.hasElevatedAccessSync)
+                                    IconButton(
+                                      tooltip: 'Permissões',
+                                      icon: const Icon(Icons.security_outlined),
+                                      onPressed: () {
+                                        Navigator.of(context).push(
+                                          MaterialPageRoute(
+                                            builder: (_) => PermissoesFuncionarioScreen(
+                                              employee: funcionario,
+                                            ),
+                                          ),
+                                        );
+                                      },
+                                    ),
+                                  Switch(
+                                    value: funcionario.isActive,
+                                    onChanged: (value) async {
+                                      await _service.definirAtivo(
+                                        employeeId: funcionario.id,
+                                        isActive: value,
+                                      );
+                                      if (mounted) setState(() {});
+                                    },
+                                  ),
+                                ],
                               ),
                             ),
                             if (semConta && meuUid != null)
