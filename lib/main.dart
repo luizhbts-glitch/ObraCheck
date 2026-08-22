@@ -625,6 +625,17 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   String? _stableUniqueTodayProjectId;
   final ProjectContextService _projectContext = ProjectContextService.instance;
 
+  /// Navigator aninhado que a sidebar (telas grandes) envolve — o
+  /// dashboard e qualquer tela empurrada a partir dele vivem aqui, pra
+  /// sidebar ficar fixa fora da navegação. Só existe montado quando
+  /// `isLargeScreen`; em telas pequenas fica `null` e as navegações
+  /// caem no Navigator raiz normal (mesmo comportamento de sempre).
+  final GlobalKey<NavigatorState> _contentNavigatorKey = GlobalKey<NavigatorState>();
+
+  NavigatorState _contentNavigatorOrRoot(BuildContext context) {
+    return _contentNavigatorKey.currentState ?? Navigator.of(context);
+  }
+
   Box<InspectionRecord> get _inspectionsBox =>
       Hive.box<InspectionRecord>('inspections');
 
@@ -912,7 +923,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   }
 
   Future<void> _goToProfile() async {
-    await Navigator.pushNamed(context, ObraCheckApp.profileRoute);
+    await _contentNavigatorOrRoot(context).pushNamed(ObraCheckApp.profileRoute);
 
     if (!mounted) return;
     await _loadUserName();
@@ -1201,71 +1212,62 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   // em telas pequenas) — extraídas pra métodos próprios pra não duplicar
   // a navegação entre as duas apresentações.
   Future<void> _openFichaFvs() async {
-    await Navigator.push(
-      context,
+    await _contentNavigatorOrRoot(context).push(
       MaterialPageRoute(builder: (_) => const FichaFvsModeScreen()),
     );
     _refreshDashboardClock();
   }
 
   Future<void> _openMapaVisual() async {
-    await Navigator.push(
-      context,
+    await _contentNavigatorOrRoot(context).push(
       MaterialPageRoute(builder: (_) => const VisualTowerMapScreen()),
     );
     _refreshDashboardClock();
   }
 
   Future<void> _openServicos() async {
-    await Navigator.push(
-      context,
+    await _contentNavigatorOrRoot(context).push(
       MaterialPageRoute(builder: (_) => const ServicesScreen()),
     );
     _refreshDashboardClock();
   }
 
   Future<void> _openEmpreiteiros() async {
-    await Navigator.push(
-      context,
+    await _contentNavigatorOrRoot(context).push(
       MaterialPageRoute(builder: (_) => const EmpreiteirosScreen()),
     );
     _refreshDashboardClock();
   }
 
   Future<void> _openRelatorios() async {
-    await Navigator.push(
-      context,
+    await _contentNavigatorOrRoot(context).push(
       MaterialPageRoute(builder: (_) => const ReportsScreen()),
     );
     _refreshDashboardClock();
   }
 
   Future<void> _openDiarioDeObra() async {
-    await Navigator.push(
-      context,
+    await _contentNavigatorOrRoot(context).push(
       MaterialPageRoute(builder: (_) => const DiaryListScreen()),
     );
     _refreshDashboardClock();
   }
 
   Future<void> _openAlmoxarife() async {
-    await Navigator.push(
-      context,
+    await _contentNavigatorOrRoot(context).push(
       MaterialPageRoute(builder: (_) => const AlmoxarifeScreen()),
     );
     _refreshDashboardClock();
   }
 
   Future<void> _openCompras() async {
-    await Navigator.push(
-      context,
+    await _contentNavigatorOrRoot(context).push(
       MaterialPageRoute(builder: (_) => const ComprasHomeScreen()),
     );
   }
 
   Future<void> _openFuncionarios() async {
-    await Navigator.push(
-      context,
+    await _contentNavigatorOrRoot(context).push(
       MaterialPageRoute(
         builder: (_) => FuncionariosScreen(
           orgId: _projectContext.currentProject!.orgId,
@@ -1275,8 +1277,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   }
 
   Future<void> _openDespesas() async {
-    await Navigator.push(
-      context,
+    await _contentNavigatorOrRoot(context).push(
       MaterialPageRoute(
         builder: (_) => DespesasScreen(
           orgId: _projectContext.currentProject!.orgId,
@@ -1327,8 +1328,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       }
 
       if (!mounted) return;
-      await Navigator.push(
-        context,
+      await _contentNavigatorOrRoot(context).push(
         MaterialPageRoute(builder: (_) => DiaryEditScreen(diary: diary)),
       );
       _refreshDashboardClock();
@@ -1366,66 +1366,84 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     // inconsistentes um com o outro sobre a mesma obra estar vinculada.
     final isLargeScreen = MediaQuery.of(context).size.width > 1000;
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Obra Check'),
-        actions: [
-          if (hasProject && _projectContext.hasElevatedAccessSync)
-            IconButton(
-              tooltip: _projectContext.orgEditModeEnabled
-                  ? 'Modo edição ativo — tocar para voltar à visualização'
-                  : 'Modo visualização — tocar para liberar edição',
-              onPressed: _toggleOrgEditMode,
-              icon: Icon(
-                _projectContext.orgEditModeEnabled
-                    ? Icons.edit
-                    : Icons.visibility_outlined,
-                color: _projectContext.orgEditModeEnabled
-                    ? Theme.of(context).colorScheme.tertiary
-                    : null,
-              ),
-            ),
-          if (_projectContext.isGlobalAdminSync)
-            IconButton(
-              tooltip: 'Construtoras (administração)',
-              onPressed: () {
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => const ConstrutorasAdminScreen(),
+    final dashboardScaffold = Scaffold(
+      appBar: PreferredSize(
+        preferredSize: const Size.fromHeight(kToolbarHeight),
+        // AnimatedBuilder próprio aqui — não basta reconstruir o
+        // `_HomePageState.build()` inteiro quando `_projectContext` muda:
+        // uma vez que essa Scaffold vira o conteúdo (possivelmente já
+        // montado antes) do Navigator aninhado da sidebar em telas
+        // grandes, contar só com o `hasProject` capturado lá em cima
+        // arrisca a mesma inconsistência já vista entre sidebar e
+        // "Ações rápidas" num resize puro — aqui reagindo sozinho,
+        // sem depender de o Navigator aninhado "perceber" o rebuild.
+        child: AnimatedBuilder(
+          animation: _projectContext,
+          builder: (context, _) {
+            final hasProjectFresh = _projectContext.hasProjectAccessForCurrentUserSync;
+            return AppBar(
+              title: const Text('Obra Check'),
+              actions: [
+                if (hasProjectFresh && _projectContext.hasElevatedAccessSync)
+                  IconButton(
+                    tooltip: _projectContext.orgEditModeEnabled
+                        ? 'Modo edição ativo — tocar para voltar à visualização'
+                        : 'Modo visualização — tocar para liberar edição',
+                    onPressed: _toggleOrgEditMode,
+                    icon: Icon(
+                      _projectContext.orgEditModeEnabled
+                          ? Icons.edit
+                          : Icons.visibility_outlined,
+                      color: _projectContext.orgEditModeEnabled
+                          ? Theme.of(context).colorScheme.tertiary
+                          : null,
+                    ),
                   ),
-                );
-              },
-              icon: const Icon(Icons.admin_panel_settings_outlined),
-            ),
-          // Compras/RH/Despesas migraram pro menu lateral (barra da Home) —
-          // eram "atalhos temporários até o menu lateral existir", agora
-          // viraram sub-itens dele, como o comentário anterior já previa.
-          if (hasProject)
-            IconButton(
-              tooltip: 'Trocar obra',
-              onPressed: _pickProject,
-              icon: const Icon(Icons.business_outlined),
-            ),
-          IconButton(
-            tooltip: 'Perfil',
-            onPressed: _goToProfile,
-            icon: const Icon(Icons.account_circle_outlined),
-          ),
-          IconButton(
-            tooltip: 'Sincronizar',
-            onPressed: _syncing
-                ? null
-                : () => _syncOnEnter(trigger: 'manual', notifyUser: true),
-            icon: const Icon(Icons.sync),
-          ),
-          IconButton(
-            tooltip: 'Sair',
-            onPressed: () async {
-              await AuthService.instance.logout();
-            },
-            icon: const Icon(Icons.logout),
-          ),
-        ],
+                if (_projectContext.isGlobalAdminSync)
+                  IconButton(
+                    tooltip: 'Construtoras (administração)',
+                    onPressed: () {
+                      _contentNavigatorOrRoot(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => const ConstrutorasAdminScreen(),
+                        ),
+                      );
+                    },
+                    icon: const Icon(Icons.admin_panel_settings_outlined),
+                  ),
+                // Compras/RH/Despesas migraram pro menu lateral (barra da
+                // Home) — eram "atalhos temporários até o menu lateral
+                // existir", agora viraram sub-itens dele, como o
+                // comentário anterior já previa.
+                if (hasProjectFresh)
+                  IconButton(
+                    tooltip: 'Trocar obra',
+                    onPressed: _pickProject,
+                    icon: const Icon(Icons.business_outlined),
+                  ),
+                IconButton(
+                  tooltip: 'Perfil',
+                  onPressed: _goToProfile,
+                  icon: const Icon(Icons.account_circle_outlined),
+                ),
+                IconButton(
+                  tooltip: 'Sincronizar',
+                  onPressed: _syncing
+                      ? null
+                      : () => _syncOnEnter(trigger: 'manual', notifyUser: true),
+                  icon: const Icon(Icons.sync),
+                ),
+                IconButton(
+                  tooltip: 'Sair',
+                  onPressed: () async {
+                    await AuthService.instance.logout();
+                  },
+                  icon: const Icon(Icons.logout),
+                ),
+              ],
+            );
+          },
+        ),
       ),
       body: SafeArea(
         bottom: true,
@@ -1852,91 +1870,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                             ],
                           );
 
-                          if (!isLargeScreen) return dashboardList;
-
-                          return ValueListenableBuilder<Box<DiaryRecord>>(
-                            valueListenable: _diariesBox.listenable(),
-                            builder: (context, diariesValue, _) {
-                              final diaryProjectId =
-                                  _projectContext.currentProjectIdSync;
-                              return Row(
-                                crossAxisAlignment: CrossAxisAlignment.stretch,
-                                children: [
-                                  HomeSidebar(
-                                    pinned: _sidebarPinned,
-                                    onTogglePin: _toggleSidebarPinned,
-                                    items: [
-                                      SidebarAction(
-                                        icon: Icons
-                                            .assignment_turned_in_outlined,
-                                        label: 'Ficha F.V.S.',
-                                        onTap: _openFichaFvs,
-                                      ),
-                                      SidebarAction(
-                                        icon: Icons.apartment_outlined,
-                                        label: 'Mapa visual',
-                                        onTap: _openMapaVisual,
-                                      ),
-                                      SidebarAction(
-                                        icon: Icons.handyman_outlined,
-                                        label: 'Serviços',
-                                        onTap: _openServicos,
-                                      ),
-                                      SidebarAction(
-                                        icon: Icons.groups_outlined,
-                                        label: 'Empreiteiros',
-                                        onTap: _openEmpreiteiros,
-                                      ),
-                                      SidebarAction(
-                                        icon: Icons.picture_as_pdf_outlined,
-                                        label: 'Relatórios',
-                                        onTap: _openRelatorios,
-                                      ),
-                                      SidebarAction(
-                                        icon: Icons.menu_book_outlined,
-                                        label: 'Diário de Obra',
-                                        onTap: _openDiarioDeObra,
-                                      ),
-                                      SidebarAction(
-                                        icon: Icons.today_outlined,
-                                        label: 'Diário de hoje',
-                                        subtitle: _todayDiaryStatusText(
-                                          diaryProjectId,
-                                        ),
-                                        busy: _openingTodayDiary,
-                                        onTap: _openTodayDiaryShortcut,
-                                      ),
-                                      SidebarAction(
-                                        icon: Icons.inventory_2_outlined,
-                                        label: 'Almoxarife',
-                                        onTap: _openAlmoxarife,
-                                      ),
-                                      if (hasProject &&
-                                          (_projectContext.currentProject?.orgId ?? '')
-                                              .isNotEmpty) ...[
-                                        SidebarAction(
-                                          icon: Icons.shopping_cart_outlined,
-                                          label: 'Compras',
-                                          onTap: _openCompras,
-                                        ),
-                                        SidebarAction(
-                                          icon: Icons.badge_outlined,
-                                          label: 'Funcionários (RH)',
-                                          onTap: _openFuncionarios,
-                                        ),
-                                        SidebarAction(
-                                          icon: Icons.receipt_long_outlined,
-                                          label: 'Despesas',
-                                          onTap: _openDespesas,
-                                        ),
-                                      ],
-                                    ],
-                                  ),
-                                  Expanded(child: dashboardList),
-                                ],
-                              );
-                            },
-                          );
+                          return dashboardList;
                         },
                       );
                     },
@@ -1947,6 +1881,110 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
           ],
         ),
       ),
+    );
+
+    if (!isLargeScreen) return dashboardScaffold;
+
+    // Em telas grandes a sidebar fica fixa fora de qualquer navegação —
+    // tudo que hoje é "conteúdo" (o próprio dashboard, e qualquer tela
+    // empurrada a partir dele) vive dentro deste Navigator aninhado,
+    // que a sidebar envolve por fora. Telas pushed daqui (Compras,
+    // Almoxarife etc.) não precisam saber que estão aninhadas —
+    // `Navigator.of(context)` chamado de dentro delas já resolve pra
+    // este Navigator (o ancestral mais próximo), não pro da raiz.
+    return ValueListenableBuilder<Box<DiaryRecord>>(
+      valueListenable: _diariesBox.listenable(),
+      builder: (context, diariesValue, _) {
+        final diaryProjectId = _projectContext.currentProjectIdSync;
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            HomeSidebar(
+              pinned: _sidebarPinned,
+              onTogglePin: _toggleSidebarPinned,
+              items: [
+                SidebarAction(
+                  icon: Icons.assignment_turned_in_outlined,
+                  label: 'Ficha F.V.S.',
+                  onTap: _openFichaFvs,
+                ),
+                SidebarAction(
+                  icon: Icons.apartment_outlined,
+                  label: 'Mapa visual',
+                  onTap: _openMapaVisual,
+                ),
+                SidebarAction(
+                  icon: Icons.handyman_outlined,
+                  label: 'Serviços',
+                  onTap: _openServicos,
+                ),
+                SidebarAction(
+                  icon: Icons.groups_outlined,
+                  label: 'Empreiteiros',
+                  onTap: _openEmpreiteiros,
+                ),
+                SidebarAction(
+                  icon: Icons.picture_as_pdf_outlined,
+                  label: 'Relatórios',
+                  onTap: _openRelatorios,
+                ),
+                SidebarAction(
+                  icon: Icons.menu_book_outlined,
+                  label: 'Diário de Obra',
+                  onTap: _openDiarioDeObra,
+                ),
+                SidebarAction(
+                  icon: Icons.today_outlined,
+                  label: 'Diário de hoje',
+                  subtitle: _todayDiaryStatusText(diaryProjectId),
+                  busy: _openingTodayDiary,
+                  onTap: _openTodayDiaryShortcut,
+                ),
+                SidebarAction(
+                  icon: Icons.inventory_2_outlined,
+                  label: 'Almoxarife',
+                  onTap: _openAlmoxarife,
+                ),
+                if (hasProject &&
+                    (_projectContext.currentProject?.orgId ?? '').isNotEmpty) ...[
+                  SidebarAction(
+                    icon: Icons.shopping_cart_outlined,
+                    label: 'Compras',
+                    onTap: _openCompras,
+                  ),
+                  SidebarAction(
+                    icon: Icons.badge_outlined,
+                    label: 'Funcionários (RH)',
+                    onTap: _openFuncionarios,
+                  ),
+                  SidebarAction(
+                    icon: Icons.receipt_long_outlined,
+                    label: 'Despesas',
+                    onTap: _openDespesas,
+                  ),
+                ],
+              ],
+            ),
+            Expanded(
+              child: Navigator(
+                key: _contentNavigatorKey,
+                onGenerateRoute: (settings) {
+                  if (settings.name == ObraCheckApp.profileRoute) {
+                    return MaterialPageRoute(
+                      builder: (_) => const ProfileScreen(),
+                      settings: settings,
+                    );
+                  }
+                  return MaterialPageRoute(
+                    builder: (_) => dashboardScaffold,
+                    settings: settings,
+                  );
+                },
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 
