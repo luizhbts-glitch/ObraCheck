@@ -1355,6 +1355,16 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   Widget build(BuildContext context) {
     final greeting = _buildGreeting(DateTime.now());
     final hasProject = _projectContext.hasProjectAccessForCurrentUserSync;
+    // Calculado aqui em cima (não dentro dos builders aninhados mais
+    // abaixo) de propósito: só o MediaQuery.of(context) usado AQUI, no
+    // contexto do próprio State, garante que uma mudança de largura
+    // reconstrua o build() inteiro — inclusive `hasProject` — junto.
+    // Calculando isLargeScreen só lá dentro (como estava antes), um
+    // resize puro reconstruía só o builder aninhado que dependia do
+    // MediaQuery, reusando a mesma closure "congelada" com o hasProject
+    // antigo — o menu lateral e a lista "Ações rápidas" ficavam
+    // inconsistentes um com o outro sobre a mesma obra estar vinculada.
+    final isLargeScreen = MediaQuery.of(context).size.width > 1000;
 
     return Scaffold(
       appBar: AppBar(
@@ -1536,9 +1546,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                             todayRecords: today,
                             uniqueTodayInspections: conferidasHoje,
                           );
-
-                          final isLargeScreen =
-                              MediaQuery.of(context).size.width > 1000;
 
                           final dashboardList = ListView(
                             padding: EdgeInsets.fromLTRB(
