@@ -253,7 +253,7 @@ class SyncOrchestrator {
 
   static final SyncOrchestrator instance = SyncOrchestrator._();
 
-  static const Duration _timerInterval = Duration(minutes: 5);
+  static const Duration _timerInterval = Duration(hours: 2);
   static const Duration _autoCooldown = Duration(seconds: 25);
   static const int _historyLimit = 10;
 
@@ -290,7 +290,7 @@ class SyncOrchestrator {
 
     _timer?.cancel();
     _timer = Timer.periodic(_timerInterval, (_) {
-      unawaited(requestSync(trigger: 'timer_5m', manual: false));
+      unawaited(requestSync(trigger: 'timer_2h', manual: false));
     });
 
     _connectivityPollTimer?.cancel();
@@ -670,7 +670,7 @@ class SyncOrchestrator {
   }
 
   bool _isCoalescedAutoTrigger(String trigger) {
-    return trigger == 'timer_5m' ||
+    return trigger == 'timer_2h' ||
         trigger == 'internet_restored' ||
         trigger.contains('resume') ||
         trigger.contains('foreground');

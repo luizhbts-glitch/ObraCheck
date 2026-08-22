@@ -15,6 +15,7 @@ class AlmoxarifeScreen extends StatefulWidget {
 class _AlmoxarifeScreenState extends State<AlmoxarifeScreen> {
   String _tab = 'pendentes';
   final TextEditingController _equipmentSearchCtrl = TextEditingController();
+  final TextEditingController _pendingSearchCtrl = TextEditingController();
   String? _historyEquipmentId;
   DateTime? _historyStartDate;
   DateTime? _historyEndDate;
@@ -34,8 +35,19 @@ class _AlmoxarifeScreenState extends State<AlmoxarifeScreen> {
   @override
   void dispose() {
     _equipmentSearchCtrl.dispose();
+    _pendingSearchCtrl.dispose();
     _historyNameCtrl.dispose();
     super.dispose();
+  }
+
+  /// Padroniza texto digitado (nome de equipamento/pessoa) para
+  /// "Primeira letra maiúscula, resto minúsculo". Aplicado só a texto
+  /// novo digitado nesta tela — não migra registros já existentes.
+  String _toSentenceCase(String input) {
+    final trimmed = input.trim().replaceAll(RegExp(r'\s+'), ' ');
+    if (trimmed.isEmpty) return trimmed;
+    final lower = trimmed.toLowerCase();
+    return lower[0].toUpperCase() + lower.substring(1);
   }
 
   String _equipmentCodeOf(Map<String, dynamic> equipment) {
@@ -547,10 +559,24 @@ class _AlmoxarifeScreenState extends State<AlmoxarifeScreen> {
     qtdCtrl.dispose();
     if (saved == null) return;
 
-    final nome = (saved['nome'] ?? '').toString().trim();
+    final nome = _toSentenceCase((saved['nome'] ?? '').toString());
     final qty = (saved['quantidade'] as int?) ?? 1;
 
     if (initial != null) {
+      if (!mounted) return;
+      final confirmEdit = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Confirmar edição'),
+          content: const Text('Tem certeza que quer editar esse item?'),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
+            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Confirmar')),
+          ],
+        ),
+      );
+      if (confirmEdit != true) return;
+
       final id = (initial['id'] ?? saved['id'] ?? '').toString();
       final existing = Map<String, dynamic>.from(initial);
       final code = _equipmentCodeOf(existing).isEmpty
@@ -602,139 +628,632 @@ class _AlmoxarifeScreenState extends State<AlmoxarifeScreen> {
     if (mounted) setState(() {});
   }
 
+  Map<String, List<Map<String, dynamic>>> _availableUnitsByName(
+    Map<String, Map<String, dynamic>> lastByEquipment,
+  ) {
+    final map = <String, List<Map<String, dynamic>>>{};
+    for (final e in _equipmentList()) {
+      if (!_isEquipmentAvailableForCheckout(e, lastByEquipment)) continue;
+      final nome = (e['nome'] ?? '').toString();
+      if (nome.isEmpty) continue;
+      map.putIfAbsent(nome, () => <Map<String, dynamic>>[]).add(e);
+    }
+    return map;
+  }
+
   Future<void> _registrarSaida() async {
     final lastByEquipment = _lastMovementByEquipment();
-    final equipments = _equipmentList()
-        .where((e) => _isEquipmentAvailableForCheckout(e, lastByEquipment))
-        .toList();
+    final availableByName = _availableUnitsByName(lastByEquipment);
+    if (availableByName.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Nenhum equipamento disponível para saída.')),
+        );
+      }
+      return;
+    }
+
+    final names = availableByName.keys.toList()
+      ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
     final suggestions = _responsibleNameSuggestions(days: 90);
-    String? equipmentId;
     String responsavel = '';
+    String? selectedName = names.first;
+    final cart = <String, int>{};
 
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) {
         return StatefulBuilder(
-          builder: (ctx, setDialog) => AlertDialog(
-            title: const Text('Registrar saída'),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                DropdownButtonFormField<String>(
-                  initialValue: equipmentId,
-                  hint: const Text('Selecione equipamento'),
-                  isExpanded: true,
-                  items: equipments
-                      .map((e) => DropdownMenuItem<String>(
-                            value: e['id'].toString(),
-                            child: Text(e['nome'].toString()),
-                          ))
-                      .toList(),
-                  onChanged: (v) => setDialog(() => equipmentId = v),
-                ),
-                const SizedBox(height: 8),
-                Autocomplete<String>(
-                  optionsMaxHeight: 180,
-                  optionsBuilder: (textEditingValue) {
-                    final query = textEditingValue.text.trim().toLowerCase();
-                    if (query.isEmpty) {
-                      return suggestions;
-                    }
-                    return suggestions.where((n) => n.toLowerCase().contains(query));
-                  },
-                  onSelected: (value) => responsavel = value,
-                  fieldViewBuilder: (context, textController, focusNode, onFieldSubmitted) {
-                    return TextField(
-                      controller: textController,
-                      focusNode: focusNode,
-                      decoration: const InputDecoration(
-                        labelText: 'Nome de quem está pegando',
+          builder: (ctx, setDialog) {
+            final maxAvail = selectedName == null ? 0 : availableByName[selectedName]!.length;
+            final inCart = selectedName == null ? 0 : (cart[selectedName] ?? 0);
+            final canAdd = selectedName != null && inCart < maxAvail;
+            final canConfirm = responsavel.trim().isNotEmpty && cart.isNotEmpty;
+
+            return AlertDialog(
+              title: const Text('Registrar saída'),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Autocomplete<String>(
+                      optionsMaxHeight: 180,
+                      optionsBuilder: (textEditingValue) {
+                        final query = textEditingValue.text.trim().toLowerCase();
+                        if (query.isEmpty) {
+                          return suggestions;
+                        }
+                        return suggestions.where((n) => n.toLowerCase().contains(query));
+                      },
+                      onSelected: (value) => setDialog(() => responsavel = value),
+                      fieldViewBuilder: (context, textController, focusNode, onFieldSubmitted) {
+                        return TextField(
+                          controller: textController,
+                          focusNode: focusNode,
+                          decoration: const InputDecoration(
+                            labelText: 'Nome de quem está pegando (cartão)',
+                          ),
+                          onChanged: (value) => setDialog(() => responsavel = value),
+                        );
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: Autocomplete<String>(
+                            optionsMaxHeight: 220,
+                            optionsBuilder: (textEditingValue) {
+                              final query = textEditingValue.text.trim().toLowerCase();
+                              if (query.isEmpty) return names;
+                              return names.where((n) => n.toLowerCase().contains(query));
+                            },
+                            onSelected: (value) => setDialog(() => selectedName = value),
+                            fieldViewBuilder: (context, textController, focusNode, onFieldSubmitted) {
+                              if (textController.text.isEmpty && selectedName != null) {
+                                textController.text = selectedName!;
+                              }
+                              return TextField(
+                                controller: textController,
+                                focusNode: focusNode,
+                                decoration: const InputDecoration(
+                                  labelText: 'Item (buscar)',
+                                  prefixIcon: Icon(Icons.search),
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Padding(
+                          padding: const EdgeInsets.only(top: 6),
+                          child: IconButton.filled(
+                            tooltip: 'Adicionar item ao cartão',
+                            onPressed: canAdd
+                                ? () => setDialog(() {
+                                      cart[selectedName!] = (cart[selectedName!] ?? 0) + 1;
+                                    })
+                                : null,
+                            icon: const Icon(Icons.add),
+                          ),
+                        ),
+                      ],
+                    ),
+                    if (selectedName != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: Text(
+                          'Disponível: ${availableByName[selectedName]!.length - (cart[selectedName] ?? 0)}',
+                          style: const TextStyle(fontSize: 12, color: Colors.grey),
+                        ),
                       ),
-                      onChanged: (value) => responsavel = value,
-                    );
-                  },
+                    const SizedBox(height: 8),
+                    if (cart.isEmpty)
+                      const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 8),
+                        child: Text(
+                          'Nenhum item adicionado ainda.',
+                          style: TextStyle(color: Colors.grey),
+                        ),
+                      )
+                    else
+                      ...cart.entries.map((entry) {
+                        final avail = availableByName[entry.key]!.length;
+                        return ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          dense: true,
+                          title: Text(entry.key),
+                          subtitle: Text('Quantidade: ${entry.value}'),
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              IconButton(
+                                icon: const Icon(Icons.remove_circle_outline),
+                                onPressed: () => setDialog(() {
+                                  final next = entry.value - 1;
+                                  if (next <= 0) {
+                                    cart.remove(entry.key);
+                                  } else {
+                                    cart[entry.key] = next;
+                                  }
+                                }),
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.add_circle_outline),
+                                onPressed: entry.value >= avail
+                                    ? null
+                                    : () => setDialog(() => cart[entry.key] = entry.value + 1),
+                              ),
+                            ],
+                          ),
+                        );
+                      }),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
+                ElevatedButton(
+                  onPressed: canConfirm ? () => Navigator.pop(ctx, true) : null,
+                  child: const Text('Registrar'),
                 ),
               ],
-            ),
-            actions: [
-              TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
-              ElevatedButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Registrar')),
-            ],
-          ),
+            );
+          },
         );
       },
     );
 
-    if (ok != true || equipmentId == null) {
-      return;
-    }
+    if (ok != true) return;
 
-    final equipment = _equipments.get(equipmentId);
-    if (equipment is! Map) {
-      return;
-    }
-
-    final id = DateTime.now().microsecondsSinceEpoch.toString();
+    final responsavelNormalizado = _toSentenceCase(responsavel);
+    final batchId = 'cartao_${DateTime.now().microsecondsSinceEpoch}';
     final currentProjectId = await ProjectContextService.instance.getCurrentProjectId();
-    await _movements.put(id, {
-      'id': id,
-      'projectId': currentProjectId,
-      'equipmentId': equipmentId,
-      'equipmentNome': equipment['nome'].toString(),
-      'tipo': 'saida',
-      'responsavel': responsavel.trim(),
-      'createdAt': DateTime.now(),
-      'updatedAt': DateTime.now(),
-      'deleted': false,
-      'pendingSync': true,
-      'deletedAt': null,
-    });
-    final savedMovement = _movements.get(id);
-    if (savedMovement is Map) {
+    final createdAt = DateTime.now();
+    var seq = 0;
+
+    for (final entry in cart.entries) {
+      final units = availableByName[entry.key] ?? const <Map<String, dynamic>>[];
+      final qty = entry.value.clamp(0, units.length);
+      for (var i = 0; i < qty; i++) {
+        final unit = units[i];
+        final unitId = (unit['id'] ?? '').toString();
+        if (unitId.isEmpty) continue;
+        seq++;
+        final id = '${DateTime.now().microsecondsSinceEpoch}_$seq';
+        await _movements.put(id, {
+          'id': id,
+          'projectId': currentProjectId,
+          'equipmentId': unitId,
+          'equipmentNome': entry.key,
+          'tipo': 'saida',
+          'responsavel': responsavelNormalizado,
+          'batchId': batchId,
+          'createdAt': createdAt,
+          'updatedAt': createdAt,
+          'deleted': false,
+          'pendingSync': true,
+          'deletedAt': null,
+        });
+      }
+    }
+
+    if (seq > 0) {
       await SyncOrchestrator.instance.refreshPendingSnapshot();
     }
     if (mounted) setState(() {});
   }
 
-  Future<void> _registrarDevolucao(Map<String, dynamic> pendingMovement) async {
+  Future<void> _registrarDevolucaoQty(
+    List<Map<String, dynamic>> units,
+    String equipmentNome,
+    String responsavelSaida,
+  ) async {
+    final total = units.length;
+    if (total == 0) return;
+    int qty = total;
     final ctrl = TextEditingController();
+
     final ok = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Registrar devolução'),
-        content: TextField(controller: ctrl, decoration: const InputDecoration(labelText: 'Quem devolveu? (opcional)')),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
-          ElevatedButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Confirmar')),
-        ],
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialog) => AlertDialog(
+          title: Text('Devolver $equipmentNome'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('Retirado por: ${responsavelSaida.isEmpty ? '-' : responsavelSaida}'),
+              const SizedBox(height: 12),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  IconButton(
+                    onPressed: qty > 1 ? () => setDialog(() => qty--) : null,
+                    icon: const Icon(Icons.remove),
+                  ),
+                  Text('$qty / $total', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                  IconButton(
+                    onPressed: qty < total ? () => setDialog(() => qty++) : null,
+                    icon: const Icon(Icons.add),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: ctrl,
+                decoration: const InputDecoration(labelText: 'Quem devolveu? (opcional)'),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
+            ElevatedButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Confirmar')),
+          ],
+        ),
       ),
     );
+
     if (ok != true) {
       ctrl.dispose();
       return;
     }
 
-    final id = DateTime.now().microsecondsSinceEpoch.toString();
     final currentProjectId = await ProjectContextService.instance.getCurrentProjectId();
-    await _movements.put(id, {
-      'id': id,
-      'projectId': currentProjectId,
-      'equipmentId': pendingMovement['equipmentId'].toString(),
-      'equipmentNome': pendingMovement['equipmentNome'].toString(),
-      'tipo': 'devolucao',
-      'responsavel': ctrl.text.trim(),
-      'createdAt': DateTime.now(),
-      'updatedAt': DateTime.now(),
-      'deleted': false,
-      'pendingSync': true,
-      'deletedAt': null,
-    });
-    final savedMovement = _movements.get(id);
-    if (savedMovement is Map) {
-      await SyncOrchestrator.instance.refreshPendingSnapshot();
+    final quemDevolveu = _toSentenceCase(ctrl.text);
+    final createdAt = DateTime.now();
+    for (var i = 0; i < qty; i++) {
+      final pendingMovement = units[i];
+      final id = '${DateTime.now().microsecondsSinceEpoch}_dv_$i';
+      await _movements.put(id, {
+        'id': id,
+        'projectId': currentProjectId,
+        'equipmentId': pendingMovement['equipmentId'].toString(),
+        'equipmentNome': pendingMovement['equipmentNome'].toString(),
+        'tipo': 'devolucao',
+        'responsavel': quemDevolveu,
+        'createdAt': createdAt,
+        'updatedAt': createdAt,
+        'deleted': false,
+        'pendingSync': true,
+        'deletedAt': null,
+      });
     }
+    await SyncOrchestrator.instance.refreshPendingSnapshot();
     ctrl.dispose();
     if (mounted) setState(() {});
+  }
+
+  bool _sameCart(Map<String, int> a, Map<String, int> b) {
+    if (a.length != b.length) return false;
+    for (final entry in a.entries) {
+      if (b[entry.key] != entry.value) return false;
+    }
+    return true;
+  }
+
+  Future<void> _editarCartao(_PendingCard card) async {
+    final lastByEquipment = _lastMovementByEquipment();
+    final availableByName = _availableUnitsByName(lastByEquipment);
+    final original = <String, int>{
+      for (final entry in card.items.entries) entry.key: entry.value.length,
+    };
+    final allNames = <String>{...availableByName.keys, ...original.keys}.toList()
+      ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+    if (allNames.isEmpty) return;
+
+    int maxFor(String name) => (original[name] ?? 0) + (availableByName[name]?.length ?? 0);
+
+    String? selectedName = allNames.first;
+    final cart = Map<String, int>.from(original);
+
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setDialog) {
+            final maxAvail = selectedName == null ? 0 : maxFor(selectedName!);
+            final inCart = selectedName == null ? 0 : (cart[selectedName] ?? 0);
+            final canAdd = selectedName != null && inCart < maxAvail;
+            final changed = !_sameCart(cart, original);
+
+            return AlertDialog(
+              title: Text('Editar cartão — ${card.responsavel.isEmpty ? 'Sem responsável' : card.responsavel}'),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: DropdownButtonFormField<String>(
+                            initialValue: selectedName,
+                            isExpanded: true,
+                            decoration: const InputDecoration(labelText: 'Item'),
+                            items: allNames.map((n) {
+                              final avail = maxFor(n) - (cart[n] ?? 0);
+                              return DropdownMenuItem<String>(
+                                value: n,
+                                child: Text('$n (disp: $avail)'),
+                              );
+                            }).toList(),
+                            onChanged: (v) => setDialog(() => selectedName = v),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Padding(
+                          padding: const EdgeInsets.only(top: 6),
+                          child: IconButton.filled(
+                            tooltip: 'Adicionar item ao cartão',
+                            onPressed: canAdd
+                                ? () => setDialog(() {
+                                      cart[selectedName!] = (cart[selectedName!] ?? 0) + 1;
+                                    })
+                                : null,
+                            icon: const Icon(Icons.add),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    if (cart.values.every((v) => v <= 0))
+                      const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 8),
+                        child: Text(
+                          'Nenhum item no cartão.',
+                          style: TextStyle(color: Colors.grey),
+                        ),
+                      )
+                    else
+                      ...cart.entries.where((e) => e.value > 0).map((entry) {
+                        final max = maxFor(entry.key);
+                        return ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          dense: true,
+                          title: Text(entry.key),
+                          subtitle: Text('Quantidade: ${entry.value}'),
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              IconButton(
+                                icon: const Icon(Icons.remove_circle_outline),
+                                onPressed: () => setDialog(() {
+                                  final next = entry.value - 1;
+                                  if (next <= 0) {
+                                    cart.remove(entry.key);
+                                  } else {
+                                    cart[entry.key] = next;
+                                  }
+                                }),
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.add_circle_outline),
+                                onPressed: entry.value >= max
+                                    ? null
+                                    : () => setDialog(() => cart[entry.key] = entry.value + 1),
+                              ),
+                            ],
+                          ),
+                        );
+                      }),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
+                ElevatedButton(
+                  onPressed: changed ? () => Navigator.pop(ctx, true) : null,
+                  child: const Text('Salvar'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    if (ok != true) return;
+
+    final currentProjectId = await ProjectContextService.instance.getCurrentProjectId();
+    final now = DateTime.now();
+    var seq = 0;
+
+    final touched = <String>{...original.keys, ...cart.keys};
+    final willAddNewSaida = touched.any((n) => (cart[n] ?? 0) > (original[n] ?? 0));
+    var batchId = card.key.startsWith('m_') ? '' : card.key;
+    if (batchId.isEmpty && willAddNewSaida) {
+      batchId = 'cartao_${now.microsecondsSinceEpoch}';
+      for (final units in card.items.values) {
+        for (final u in units) {
+          final mid = (u['id'] ?? '').toString();
+          if (mid.isEmpty) continue;
+          final updated = Map<String, dynamic>.from(u)
+            ..['batchId'] = batchId
+            ..['pendingSync'] = true
+            ..['updatedAt'] = now;
+          await _movements.put(mid, updated);
+        }
+      }
+    }
+
+    for (final name in touched) {
+      final was = original[name] ?? 0;
+      final wantNow = cart[name] ?? 0;
+
+      if (wantNow < was) {
+        final units = card.items[name] ?? const <Map<String, dynamic>>[];
+        final qtyReturn = (was - wantNow).clamp(0, units.length);
+        for (var i = 0; i < qtyReturn; i++) {
+          final pendingMovement = units[i];
+          seq++;
+          final id = '${now.microsecondsSinceEpoch}_edret_$seq';
+          await _movements.put(id, {
+            'id': id,
+            'projectId': currentProjectId,
+            'equipmentId': pendingMovement['equipmentId'].toString(),
+            'equipmentNome': name,
+            'tipo': 'devolucao',
+            'responsavel': '',
+            'createdAt': now,
+            'updatedAt': now,
+            'deleted': false,
+            'pendingSync': true,
+            'deletedAt': null,
+          });
+        }
+      } else if (wantNow > was) {
+        final units = availableByName[name] ?? const <Map<String, dynamic>>[];
+        final qtyAdd = (wantNow - was).clamp(0, units.length);
+        for (var i = 0; i < qtyAdd; i++) {
+          final unit = units[i];
+          final unitId = (unit['id'] ?? '').toString();
+          if (unitId.isEmpty) continue;
+          seq++;
+          final id = '${now.microsecondsSinceEpoch}_edadd_$seq';
+          await _movements.put(id, {
+            'id': id,
+            'projectId': currentProjectId,
+            'equipmentId': unitId,
+            'equipmentNome': name,
+            'tipo': 'saida',
+            'responsavel': card.responsavel,
+            'batchId': batchId,
+            'createdAt': now,
+            'updatedAt': now,
+            'deleted': false,
+            'pendingSync': true,
+            'deletedAt': null,
+          });
+        }
+      }
+    }
+
+    if (seq > 0) {
+      await SyncOrchestrator.instance.refreshPendingSnapshot();
+    }
+    if (mounted) setState(() {});
+  }
+
+  List<_PendingCard> _buildPendingCards(Map<String, Map<String, dynamic>> lastByEquipment) {
+    final cardsByKey = <String, _PendingCard>{};
+    for (final m in lastByEquipment.values) {
+      if ((m['tipo'] ?? '') != 'saida') continue;
+      final batchId = (m['batchId'] ?? '').toString();
+      final key = batchId.isNotEmpty ? batchId : 'm_${(m['id'] ?? '').toString()}';
+      final responsavel = (m['responsavel'] ?? '').toString();
+      final createdAt = _toDateTime(m['createdAt']);
+      final card = cardsByKey.putIfAbsent(
+        key,
+        () => _PendingCard(key: key, responsavel: responsavel, createdAt: createdAt),
+      );
+      final nome = (m['equipmentNome'] ?? '').toString();
+      card.items.putIfAbsent(nome, () => <Map<String, dynamic>>[]).add(m);
+    }
+
+    final cards = cardsByKey.values.toList()
+      ..sort((a, b) {
+        final da = a.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+        final db = b.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+        return db.compareTo(da);
+      });
+    return cards;
+  }
+
+  static const List<Color> _pendingCardColors = [Color(0xFF14233A), Color(0xFF2A1F3D)];
+
+  Widget _pendingCardWidget(_PendingCard card, Color color) {
+    final itemEntries = card.items.entries.toList()
+      ..sort((a, b) => a.key.toLowerCase().compareTo(b.key.toLowerCase()));
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Card(
+        color: color,
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      card.responsavel.isEmpty ? 'Sem responsável' : card.responsavel,
+                      style: const TextStyle(fontWeight: FontWeight.w800, color: Color(0xFFE6EDF3)),
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: 'Editar cartão',
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                    iconSize: 18,
+                    icon: const Icon(Icons.edit_outlined, color: Color(0xFFE6EDF3)),
+                    onPressed: () => _editarCartao(card),
+                  ),
+                ],
+              ),
+              Text(
+                _formatDateTime(card.createdAt),
+                style: const TextStyle(fontSize: 12, color: Color(0xFFB8C2CC)),
+              ),
+              const Divider(color: Colors.white24, height: 16),
+              ...itemEntries.map((entry) {
+                return Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 3),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          '${entry.key}  x${entry.value.length}',
+                          style: const TextStyle(color: Color(0xFFE6EDF3)),
+                        ),
+                      ),
+                      TextButton(
+                        style: TextButton.styleFrom(
+                          padding: EdgeInsets.zero,
+                          minimumSize: const Size(0, 0),
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                        onPressed: () => _registrarDevolucaoQty(entry.value, entry.key, card.responsavel),
+                        child: const Text('Devolver'),
+                      ),
+                    ],
+                  ),
+                );
+              }),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPendingColumns(List<_PendingCard> cards) {
+    final left = <_PendingCard>[];
+    final right = <_PendingCard>[];
+    for (var i = 0; i < cards.length; i++) {
+      (i.isEven ? left : right).add(cards[i]);
+    }
+    return SingleChildScrollView(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: Column(
+              children: left.map((c) => _pendingCardWidget(c, _pendingCardColors[0])).toList(),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              children: right.map((c) => _pendingCardWidget(c, _pendingCardColors[1])).toList(),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -742,7 +1261,7 @@ class _AlmoxarifeScreenState extends State<AlmoxarifeScreen> {
     final equipments = _equipmentList();
     final movementCycles = _buildMovementCycles();
     final lastByEquipment = _lastMovementByEquipment();
-    final pendentes = lastByEquipment.values.where((m) => (m['tipo'] ?? '') == 'saida').toList();
+    final pendingCards = _buildPendingCards(lastByEquipment);
     final equipmentGroups = <String, List<Map<String, dynamic>>>{};
     for (final equipment in equipments) {
       final key = (equipment['nome'] ?? '').toString().trim();
@@ -755,6 +1274,13 @@ class _AlmoxarifeScreenState extends State<AlmoxarifeScreen> {
       if (eqQuery.isEmpty) return true;
       return entry.key.toLowerCase().contains(eqQuery);
     }).toList();
+    final pendingQuery = _pendingSearchCtrl.text.trim().toLowerCase();
+    final filteredPendingCards = pendingQuery.isEmpty
+        ? pendingCards
+        : pendingCards.where((c) {
+            if (c.responsavel.toLowerCase().contains(pendingQuery)) return true;
+            return c.items.keys.any((n) => n.toLowerCase().contains(pendingQuery));
+          }).toList();
 
     return Scaffold(
       appBar: AppBar(title: const Text('Almoxarife • Equipamentos')),
@@ -781,30 +1307,30 @@ class _AlmoxarifeScreenState extends State<AlmoxarifeScreen> {
             const SizedBox(height: 10),
             Expanded(
               child: _tab == 'pendentes'
-                  ? (pendentes.isEmpty
-                      ? const Center(child: Text('Sem pendências de devolução.'))
-                      : ListView.separated(
-                          itemCount: pendentes.length,
-                          separatorBuilder: (_, index) => const SizedBox(height: 8),
-                          itemBuilder: (context, i) {
-                            final m = pendentes[i];
-                            return Card(
-                              child: ListTile(
-                                title: Text(m['equipmentNome'].toString()),
-                                subtitle: Text('Saída por: ${(m['responsavel'] ?? '').toString()}'),
-                                trailing: Wrap(
-                                  spacing: 6,
-                                  children: [
-                                    TextButton(
-                                      onPressed: () => _registrarDevolucao(m),
-                                      child: const Text('Registrar devolução'),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            );
-                          },
-                        ))
+                  ? Column(
+                      children: [
+                        TextField(
+                          controller: _pendingSearchCtrl,
+                          decoration: const InputDecoration(
+                            prefixIcon: Icon(Icons.search),
+                            hintText: 'Buscar por pessoa ou equipamento',
+                          ),
+                          onChanged: (_) => setState(() {}),
+                        ),
+                        const SizedBox(height: 8),
+                        Expanded(
+                          child: filteredPendingCards.isEmpty
+                              ? Center(
+                                  child: Text(
+                                    pendingQuery.isEmpty
+                                        ? 'Sem pendências de devolução.'
+                                        : 'Nenhuma pendência encontrada para "$pendingQuery".',
+                                  ),
+                                )
+                              : _buildPendingColumns(filteredPendingCards),
+                        ),
+                      ],
+                    )
                   : _tab == 'equipamentos'
                           ? Column(
                               children: [
@@ -1002,5 +1528,14 @@ class _MovementCycle {
   String devolvidoPor;
   DateTime? saidaAt;
   DateTime? devolucaoAt;
+}
+
+class _PendingCard {
+  _PendingCard({required this.key, required this.responsavel, required this.createdAt});
+
+  final String key;
+  final String responsavel;
+  final DateTime? createdAt;
+  final Map<String, List<Map<String, dynamic>>> items = {};
 }
 
