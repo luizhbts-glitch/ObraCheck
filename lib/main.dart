@@ -1813,6 +1813,29 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                                 },
                               ),
                               const SizedBox(height: 10),
+
+                              if (hasProject &&
+                                  (_projectContext.currentProject?.orgId ?? '')
+                                      .isNotEmpty) ...[
+                                _ActionButton(
+                                  label: 'Compras',
+                                  icon: Icons.shopping_cart_outlined,
+                                  onTap: _openCompras,
+                                ),
+                                const SizedBox(height: 10),
+                                _ActionButton(
+                                  label: 'Funcionários (RH)',
+                                  icon: Icons.badge_outlined,
+                                  onTap: _openFuncionarios,
+                                ),
+                                const SizedBox(height: 10),
+                                _ActionButton(
+                                  label: 'Despesas',
+                                  icon: Icons.receipt_long_outlined,
+                                  onTap: _openDespesas,
+                                ),
+                                const SizedBox(height: 10),
+                              ],
                               ], // if (!isLargeScreen)
 
                               const SizedBox(height: 12),
