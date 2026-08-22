@@ -80,6 +80,27 @@ service cloud.firestore {
       match /pending_invites/{inviteId} {
         allow read, write: if request.auth != null;
       }
+
+      // ⚠️ GAP CONHECIDO (achado em 2026-08-22 ao ligar o Controle de
+      // estoque de equipamentos): sem esta regra, NENHUMA subcoleção do
+      // ERP debaixo de /projects/{projectId}/ (cotacoes, requisicoes_compra,
+      // pedidos_compra, despesas, equipamentos_estoque etc.) tinha regra
+      // nenhuma — o Firestore nega por padrão, então todo `_mirror()` dos
+      // serviços (Compras/Despesas/Estoque) falhava silenciosamente (o
+      // catch só loga) e os dados nunca saíam do Hive local do
+      // dispositivo. Mesmo nível de abertura já aceito para /obras/**
+      // logo abaixo — lockdown por membership fica pro mesmo trabalho
+      // futuro documentado ali.
+      match /{document=**} {
+        allow read, write: if request.auth != null;
+      }
+    }
+
+    // Mesmo gap para as subcoleções de Compras que ficam sob a construtora
+    // (fornecedores, materiais_catalogo, centros_custo) — a regra de
+    // `construtoras/{orgId}` acima cobre só o documento raiz.
+    match /construtoras/{orgId}/{document=**} {
+      allow read, write: if request.auth != null;
     }
 
     // Permite collectionGroup queries em access_codes e pending_invites.
