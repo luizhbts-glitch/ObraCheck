@@ -44,13 +44,34 @@ class AuthService {
     }
 
     try {
-      return await _auth.signInWithEmailAndPassword(
+      final credential = await _auth.signInWithEmailAndPassword(
         email: normalizedEmail,
         password: rawPassword,
       );
+      await _ensureUserDocHasEmail(credential.user);
+      return credential;
     } on FirebaseAuthException catch (e) {
       debugPrint('[AuthService.login] code=${e.code} message=${e.message}');
       rethrow;
+    }
+  }
+
+  /// Login simples nunca gravava `users/{uid}.email` (só cadastro novo e
+  /// login com Google faziam isso) — contas antigas que sempre entraram
+  /// por email/senha podem ter esse campo ausente, quebrando qualquer
+  /// busca por email (convite pendente, "adicionar diretor" etc.).
+  /// Autocorrige em todo login, sem sobrescrever o resto do documento.
+  Future<void> _ensureUserDocHasEmail(User? user) async {
+    if (user == null) return;
+    final email = (user.email ?? '').trim();
+    if (email.isEmpty) return;
+    try {
+      await _firestore.collection('users').doc(user.uid).set(
+        {'uid': user.uid, 'email': email},
+        SetOptions(merge: true),
+      );
+    } catch (e) {
+      debugPrint('[AuthService._ensureUserDocHasEmail] falhou: $e');
     }
   }
 

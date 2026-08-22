@@ -639,6 +639,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       );
     } catch (_) {}
     AppUpdateService.instance.removeListener(_onAppUpdateChanged);
+    _projectContext.removeListener(_onProjectContextChanged);
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -661,12 +662,23 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     AppUpdateService.instance.addListener(_onAppUpdateChanged);
+    // Sem isso, o AppBar (ícones de Compras/RH/Despesas, toggle de modo)
+    // só atualiza no próximo rebuild "por acaso" da HomePage — vinculando
+    // uma obra a uma construtora em outra tela, o ícone não aparecia até
+    // reabrir o app. `AnimatedBuilder` mais abaixo já cobre o corpo da
+    // tela, mas o `appBar:` do Scaffold fica fora dele.
+    _projectContext.addListener(_onProjectContextChanged);
     unawaited(AppUpdateService.instance.checkNow());
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await _openLazyBoxesForHome();
       _initializeHomeServices();
       unawaited(_loadInitialData());
     });
+  }
+
+  void _onProjectContextChanged() {
+    if (!mounted) return;
+    setState(() {});
   }
 
   void _onAppUpdateChanged() {
