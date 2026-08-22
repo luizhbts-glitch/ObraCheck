@@ -4,6 +4,7 @@ import '../services/project_context_service.dart';
 import '../services/sync_orchestrator.dart';
 import '../utils/project_identity.dart';
 import '../utils/project_scope.dart';
+import '../utils/similar_name.dart';
 
 class AlmoxarifeScreen extends StatefulWidget {
   const AlmoxarifeScreen({super.key});
@@ -504,9 +505,16 @@ class _AlmoxarifeScreenState extends State<AlmoxarifeScreen> {
     if (mounted) setState(() {});
   }
 
-  Future<void> _upsertEquipment({Map<String, dynamic>? initial}) async {
+  /// [group] — todas as unidades cadastradas com o mesmo nome de [initial].
+  /// Necessário pra saber a quantidade atual e poder ajustá-la (adicionar
+  /// ou remover unidades), já que cada unidade é um registro próprio.
+  Future<void> _upsertEquipment({
+    Map<String, dynamic>? initial,
+    List<Map<String, dynamic>>? group,
+  }) async {
+    final currentQty = group?.length ?? 0;
     final nomeCtrl = TextEditingController(text: (initial?['nome'] ?? '').toString());
-    final qtdCtrl = TextEditingController(text: '1');
+    final qtdCtrl = TextEditingController(text: initial == null ? '1' : currentQty.toString());
 
     final saved = await showDialog<Map<String, dynamic>>(
       context: context,
@@ -527,8 +535,10 @@ class _AlmoxarifeScreenState extends State<AlmoxarifeScreen> {
                   TextField(
                     controller: qtdCtrl,
                     keyboardType: TextInputType.number,
-                    enabled: initial == null,
-                    decoration: const InputDecoration(labelText: 'Quantidade'),
+                    decoration: InputDecoration(
+                      labelText: 'Quantidade',
+                      helperText: initial == null ? null : 'Atual: $currentQty',
+                    ),
                   ),
                 ],
               ),
@@ -577,30 +587,128 @@ class _AlmoxarifeScreenState extends State<AlmoxarifeScreen> {
       );
       if (confirmEdit != true) return;
 
-      final id = (initial['id'] ?? saved['id'] ?? '').toString();
-      final existing = Map<String, dynamic>.from(initial);
-      final code = _equipmentCodeOf(existing).isEmpty
-          ? _generateUniqueEquipmentCode(nome)
-          : _equipmentCodeOf(existing);
-      final equipment = {
-        ...existing,
-        'projectId': inferProjectId(
-          projectId: existing['projectId']?.toString(),
-          obra: existing['obra']?.toString(),
-        ),
-        'id': id,
-        'nome': nome,
-        'code': code,
-        'codigo': code,
-        'ativo': true,
-        'deleted': false,
-        'pendingSync': true,
-        'deletedAt': null,
-        'updatedAt': DateTime.now(),
-      };
-      await _equipments.put(id, equipment);
+      final units = group ?? [initial];
+      final diff = qty - units.length;
+      var toRemove = const <Map<String, dynamic>>[];
+
+      if (diff < 0) {
+        final lastByEquipment = _lastMovementByEquipment();
+        final available = units
+            .where((u) => _isEquipmentAvailableForCheckout(u, lastByEquipment))
+            .toList();
+        if (available.length < -diff) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  'Não é possível reduzir para $qty: há ${units.length - available.length} '
+                  'em uso e só ${available.length} disponível(is) pra remover.',
+                ),
+              ),
+            );
+          }
+          return;
+        }
+        toRemove = available.take(-diff).toList();
+      }
+
+      final now = DateTime.now();
+      for (final unit in units) {
+        if (toRemove.contains(unit)) continue;
+        final uid = (unit['id'] ?? '').toString();
+        if (uid.isEmpty) continue;
+        final code =
+            _equipmentCodeOf(unit).isEmpty ? _generateUniqueEquipmentCode(nome) : _equipmentCodeOf(unit);
+        final updatedUnit = {
+          ...unit,
+          'projectId': inferProjectId(
+            projectId: unit['projectId']?.toString(),
+            obra: unit['obra']?.toString(),
+          ),
+          'id': uid,
+          'nome': nome,
+          'code': code,
+          'codigo': code,
+          'ativo': true,
+          'deleted': false,
+          'pendingSync': true,
+          'deletedAt': null,
+          'updatedAt': now,
+        };
+        await _equipments.put(uid, updatedUnit);
+      }
+
+      for (final unit in toRemove) {
+        final uid = (unit['id'] ?? '').toString();
+        if (uid.isEmpty) continue;
+        final tombstone = {
+          ...unit,
+          'id': uid,
+          'projectId': inferProjectId(
+            projectId: unit['projectId']?.toString(),
+            obra: unit['obra']?.toString(),
+          ),
+          'deleted': true,
+          'pendingSync': true,
+          'deletedAt': now,
+          'updatedAt': now,
+        };
+        await _equipments.put(uid, tombstone);
+      }
+
+      if (diff > 0) {
+        final reserved = <String>{};
+        final currentProjectId = await ProjectContextService.instance.getCurrentProjectId();
+        for (var i = 0; i < diff; i++) {
+          final id = '${DateTime.now().microsecondsSinceEpoch}_add_$i';
+          final code = _generateUniqueEquipmentCode(nome, reserved: reserved);
+          reserved.add(code);
+          final newUnit = {
+            'id': id,
+            'projectId': currentProjectId,
+            'nome': nome,
+            'code': code,
+            'codigo': code,
+            'ativo': true,
+            'deleted': false,
+            'pendingSync': true,
+            'deletedAt': null,
+            'createdAt': now,
+            'updatedAt': now,
+          };
+          await _equipments.put(id, newUnit);
+        }
+      }
+
       await SyncOrchestrator.instance.refreshPendingSnapshot();
     } else {
+      final existingNames = _equipmentList()
+          .map((e) => (e['nome'] ?? '').toString())
+          .where((n) => n.isNotEmpty)
+          .toSet();
+      final similar = findSimilarNames(nome, existingNames);
+      if (similar.isNotEmpty) {
+        if (!mounted) return;
+        final proceed = await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('Nome parecido já cadastrado'),
+            content: Text(
+              'Já existe equipamento com nome parecido:\n${similar.join(', ')}\n\n'
+              'Quer cadastrar "$nome" mesmo assim?',
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
+              FilledButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('Cadastrar assim mesmo'),
+              ),
+            ],
+          ),
+        );
+        if (proceed != true) return;
+      }
+
       final reserved = <String>{};
       final currentProjectId = await ProjectContextService.instance.getCurrentProjectId();
       for (var i = 0; i < qty; i++) {
@@ -1378,7 +1486,10 @@ class _AlmoxarifeScreenState extends State<AlmoxarifeScreen> {
                                             mainAxisSize: MainAxisSize.min,
                                             children: [
                                               IconButton(
-                                                onPressed: () => _upsertEquipment(initial: group.first),
+                                                onPressed: () => _upsertEquipment(
+                                                  initial: group.first,
+                                                  group: group,
+                                                ),
                                                 icon: const Icon(Icons.edit_outlined),
                                               ),
                                               IconButton(
