@@ -632,8 +632,22 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   /// caem no Navigator raiz normal (mesmo comportamento de sempre).
   final GlobalKey<NavigatorState> _contentNavigatorKey = GlobalKey<NavigatorState>();
 
-  NavigatorState _contentNavigatorOrRoot(BuildContext context) {
-    return _contentNavigatorKey.currentState ?? Navigator.of(context);
+  /// Navegação a partir da sidebar/"Ações rápidas" — troca a seção
+  /// inteira (volta ao dashboard e empurra a nova tela por cima),
+  /// igual clicar numa aba diferente, em vez de empilhar seção sobre
+  /// seção (Compras > Funcionários > Permissões exigiria 3 "voltar" pra
+  /// sair). Navegação DENTRO de uma seção (ex.: Compras abrindo
+  /// Requisições) continua empilhando normalmente — isso aqui só troca
+  /// o que está no nível mais alto do Navigator aninhado.
+  Future<T?> _openSection<T>(BuildContext context, WidgetBuilder builder) {
+    final nested = _contentNavigatorKey.currentState;
+    if (nested != null) {
+      return nested.pushAndRemoveUntil<T>(
+        MaterialPageRoute(builder: builder),
+        (route) => route.isFirst,
+      );
+    }
+    return Navigator.of(context).push<T>(MaterialPageRoute(builder: builder));
   }
 
   Box<InspectionRecord> get _inspectionsBox =>
@@ -923,7 +937,15 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   }
 
   Future<void> _goToProfile() async {
-    await _contentNavigatorOrRoot(context).pushNamed(ObraCheckApp.profileRoute);
+    final nested = _contentNavigatorKey.currentState;
+    if (nested != null) {
+      await nested.pushNamedAndRemoveUntil(
+        ObraCheckApp.profileRoute,
+        (route) => route.isFirst,
+      );
+    } else {
+      await Navigator.of(context).pushNamed(ObraCheckApp.profileRoute);
+    }
 
     if (!mounted) return;
     await _loadUserName();
@@ -1212,77 +1234,55 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   // em telas pequenas) — extraídas pra métodos próprios pra não duplicar
   // a navegação entre as duas apresentações.
   Future<void> _openFichaFvs() async {
-    await _contentNavigatorOrRoot(context).push(
-      MaterialPageRoute(builder: (_) => const FichaFvsModeScreen()),
-    );
+    await _openSection(context, (_) => const FichaFvsModeScreen());
     _refreshDashboardClock();
   }
 
   Future<void> _openMapaVisual() async {
-    await _contentNavigatorOrRoot(context).push(
-      MaterialPageRoute(builder: (_) => const VisualTowerMapScreen()),
-    );
+    await _openSection(context, (_) => const VisualTowerMapScreen());
     _refreshDashboardClock();
   }
 
   Future<void> _openServicos() async {
-    await _contentNavigatorOrRoot(context).push(
-      MaterialPageRoute(builder: (_) => const ServicesScreen()),
-    );
+    await _openSection(context, (_) => const ServicesScreen());
     _refreshDashboardClock();
   }
 
   Future<void> _openEmpreiteiros() async {
-    await _contentNavigatorOrRoot(context).push(
-      MaterialPageRoute(builder: (_) => const EmpreiteirosScreen()),
-    );
+    await _openSection(context, (_) => const EmpreiteirosScreen());
     _refreshDashboardClock();
   }
 
   Future<void> _openRelatorios() async {
-    await _contentNavigatorOrRoot(context).push(
-      MaterialPageRoute(builder: (_) => const ReportsScreen()),
-    );
+    await _openSection(context, (_) => const ReportsScreen());
     _refreshDashboardClock();
   }
 
   Future<void> _openDiarioDeObra() async {
-    await _contentNavigatorOrRoot(context).push(
-      MaterialPageRoute(builder: (_) => const DiaryListScreen()),
-    );
+    await _openSection(context, (_) => const DiaryListScreen());
     _refreshDashboardClock();
   }
 
   Future<void> _openAlmoxarife() async {
-    await _contentNavigatorOrRoot(context).push(
-      MaterialPageRoute(builder: (_) => const AlmoxarifeScreen()),
-    );
+    await _openSection(context, (_) => const AlmoxarifeScreen());
     _refreshDashboardClock();
   }
 
   Future<void> _openCompras() async {
-    await _contentNavigatorOrRoot(context).push(
-      MaterialPageRoute(builder: (_) => const ComprasHomeScreen()),
-    );
+    await _openSection(context, (_) => const ComprasHomeScreen());
   }
 
   Future<void> _openFuncionarios() async {
-    await _contentNavigatorOrRoot(context).push(
-      MaterialPageRoute(
-        builder: (_) => FuncionariosScreen(
-          orgId: _projectContext.currentProject!.orgId,
-        ),
-      ),
+    await _openSection(
+      context,
+      (_) => FuncionariosScreen(orgId: _projectContext.currentProject!.orgId),
     );
   }
 
   Future<void> _openDespesas() async {
-    await _contentNavigatorOrRoot(context).push(
-      MaterialPageRoute(
-        builder: (_) => DespesasScreen(
-          orgId: _projectContext.currentProject!.orgId,
-        ),
-      ),
+    await _openSection(
+      context,
+      (_) => DespesasScreen(orgId: _projectContext.currentProject!.orgId),
     );
   }
 
@@ -1328,9 +1328,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       }
 
       if (!mounted) return;
-      await _contentNavigatorOrRoot(context).push(
-        MaterialPageRoute(builder: (_) => DiaryEditScreen(diary: diary)),
-      );
+      await _openSection(context, (_) => DiaryEditScreen(diary: diary));
       _refreshDashboardClock();
     } finally {
       if (mounted) setState(() => _openingTodayDiary = false);
@@ -1403,11 +1401,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                   IconButton(
                     tooltip: 'Construtoras (administração)',
                     onPressed: () {
-                      _contentNavigatorOrRoot(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => const ConstrutorasAdminScreen(),
-                        ),
-                      );
+                      _openSection(context, (_) => const ConstrutorasAdminScreen());
                     },
                     icon: const Icon(Icons.admin_panel_settings_outlined),
                   ),
