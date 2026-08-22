@@ -7,6 +7,7 @@ import '../utils/project_scope.dart';
 import '../utils/similar_name.dart';
 import '../utils/text_case.dart';
 import 'estoque_equipamentos_screen.dart';
+import 'insumos_obra_screen.dart';
 
 class AlmoxarifeScreen extends StatefulWidget {
   const AlmoxarifeScreen({super.key});
@@ -1392,6 +1393,15 @@ class _AlmoxarifeScreenState extends State<AlmoxarifeScreen> {
             onPressed: () {
               Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => const EstoqueEquipamentosScreen()),
+              );
+            },
+          ),
+          IconButton(
+            tooltip: 'Insumos de obra',
+            icon: const Icon(Icons.warehouse_outlined),
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const InsumosObraScreen()),
               );
             },
           ),
