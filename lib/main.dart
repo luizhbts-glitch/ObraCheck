@@ -45,7 +45,6 @@ import 'models/user_org_membership.dart';
 import 'models/user_project_membership.dart';
 import 'services/auth_service.dart';
 import 'services/app_update_service.dart';
-import 'services/home_layout_service.dart';
 import 'services/platform_service.dart';
 import 'services/sync_orchestrator.dart';
 import 'services/project_context_service.dart';
@@ -228,11 +227,6 @@ void _safeRegisterAdapter(void Function() register) {
   }
 }
 
-/// Observa a navegação raiz só pra saber se a Home está ou não coberta
-/// por uma tela empurrada por cima — ver `HomeLayoutService`.
-final RouteObserver<PageRoute<dynamic>> homeRouteObserver =
-    RouteObserver<PageRoute<dynamic>>();
-
 class ObraCheckApp extends StatelessWidget {
   const ObraCheckApp({super.key, required this.themeController});
 
@@ -250,23 +244,13 @@ class ObraCheckApp extends StatelessWidget {
           return MaterialApp(
             debugShowCheckedModeBanner: false,
             title: 'Obra Check',
-            navigatorObservers: [homeRouteObserver],
-            builder: (context, child) {
-              if (child == null) return const SizedBox.shrink();
-              final isLargeScreen = MediaQuery.of(context).size.width > 1000;
-              if (!isLargeScreen) return child;
-              // Só a Home (rota raiz) usa a tela cheia — a barra lateral
-              // consome parte da largura ali. Telas empurradas por cima
-              // continuam com o limite de 900px, que é o que elas foram
-              // desenhadas pra usar.
-              return ValueListenableBuilder<bool>(
-                valueListenable: HomeLayoutService.instance.homeIsTopRoute,
-                builder: (context, homeIsTopRoute, _) {
-                  if (homeIsTopRoute) return child;
-                  return Center(child: SizedBox(width: 900, child: child));
-                },
-              );
-            },
+            // Sem limite de largura em telas grandes — pedido explícito do
+            // usuário em 2026-08-22 (a barra lateral da Home consumia
+            // espaço só ali, mas o restante do app queria mais largura
+            // também, não só a Home). Antes disso existiu uma versão que
+            // limitava a 900px qualquer tela empurrada por cima da Home
+            // (via RouteObserver); removida por não ser o que foi pedido.
+            builder: (context, child) => child ?? const SizedBox.shrink(),
             theme: _lightTheme(),
             darkTheme: _darkTheme(),
             themeMode: themeController.themeMode,
@@ -625,7 +609,7 @@ class HomePage extends StatefulWidget {
   State<HomePage> createState() => _HomePageState();
 }
 
-class _HomePageState extends State<HomePage> with WidgetsBindingObserver, RouteAware {
+class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   bool _syncing = false;
   bool _sidebarPinned = (Hive.box('prefs').get('sidebar_pinned') as bool?) ?? false;
   SyncOrchestratorState _syncState = const SyncOrchestratorState.initial();
@@ -659,15 +643,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, RouteA
   }
 
   @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    final route = ModalRoute.of(context);
-    if (route is PageRoute) {
-      homeRouteObserver.subscribe(this, route);
-    }
-  }
-
-  @override
   void dispose() {
     try {
       SyncOrchestrator.instance.stateNotifier.removeListener(
@@ -677,20 +652,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, RouteA
     AppUpdateService.instance.removeListener(_onAppUpdateChanged);
     _projectContext.removeListener(_onProjectContextChanged);
     WidgetsBinding.instance.removeObserver(this);
-    homeRouteObserver.unsubscribe(this);
     super.dispose();
-  }
-
-  // A Home nunca é desmontada (fica embaixo na pilha) — só sabemos que uma
-  // tela foi empurrada por cima via RouteAware. Ver `HomeLayoutService`.
-  @override
-  void didPushNext() {
-    HomeLayoutService.instance.homeIsTopRoute.value = false;
-  }
-
-  @override
-  void didPopNext() {
-    HomeLayoutService.instance.homeIsTopRoute.value = true;
   }
 
   void _toggleSidebarPinned(bool pinned) {
@@ -1294,6 +1256,35 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, RouteA
     _refreshDashboardClock();
   }
 
+  Future<void> _openCompras() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const ComprasHomeScreen()),
+    );
+  }
+
+  Future<void> _openFuncionarios() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => FuncionariosScreen(
+          orgId: _projectContext.currentProject!.orgId,
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openDespesas() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => DespesasScreen(
+          orgId: _projectContext.currentProject!.orgId,
+        ),
+      ),
+    );
+  }
+
   Future<void> _openTodayDiaryShortcut() async {
     if (_openingTodayDiary) return;
     final projectId = _projectContext.currentProjectIdSync.trim();
@@ -1396,46 +1387,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, RouteA
               },
               icon: const Icon(Icons.admin_panel_settings_outlined),
             ),
-          // Atalhos temporários do ERP (Compras/RH) até o menu lateral
-          // definitivo existir (Fase 1a do plano ERP) — depois viram
-          // sub-itens dele, não ficam aqui pra sempre.
-          if (hasProject && (_projectContext.currentProject?.orgId ?? '').isNotEmpty) ...[
-            IconButton(
-              tooltip: 'Compras',
-              onPressed: () {
-                Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const ComprasHomeScreen()),
-                );
-              },
-              icon: const Icon(Icons.shopping_cart_outlined),
-            ),
-            IconButton(
-              tooltip: 'Funcionários (RH)',
-              onPressed: () {
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => FuncionariosScreen(
-                      orgId: _projectContext.currentProject!.orgId,
-                    ),
-                  ),
-                );
-              },
-              icon: const Icon(Icons.badge_outlined),
-            ),
-            IconButton(
-              tooltip: 'Despesas',
-              onPressed: () {
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => DespesasScreen(
-                      orgId: _projectContext.currentProject!.orgId,
-                    ),
-                  ),
-                );
-              },
-              icon: const Icon(Icons.receipt_long_outlined),
-            ),
-          ],
+          // Compras/RH/Despesas migraram pro menu lateral (barra da Home) —
+          // eram "atalhos temporários até o menu lateral existir", agora
+          // viraram sub-itens dele, como o comentário anterior já previa.
           if (hasProject)
             IconButton(
               tooltip: 'Trocar obra',
@@ -1927,6 +1881,25 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver, RouteA
                                         label: 'Almoxarife',
                                         onTap: _openAlmoxarife,
                                       ),
+                                      if (hasProject &&
+                                          (_projectContext.currentProject?.orgId ?? '')
+                                              .isNotEmpty) ...[
+                                        SidebarAction(
+                                          icon: Icons.shopping_cart_outlined,
+                                          label: 'Compras',
+                                          onTap: _openCompras,
+                                        ),
+                                        SidebarAction(
+                                          icon: Icons.badge_outlined,
+                                          label: 'Funcionários (RH)',
+                                          onTap: _openFuncionarios,
+                                        ),
+                                        SidebarAction(
+                                          icon: Icons.receipt_long_outlined,
+                                          label: 'Despesas',
+                                          onTap: _openDespesas,
+                                        ),
+                                      ],
                                     ],
                                   ),
                                   Expanded(child: dashboardList),

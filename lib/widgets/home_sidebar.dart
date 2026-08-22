@@ -23,8 +23,7 @@ class SidebarAction {
 /// Menu lateral estilo VS Code/Notion: recolhido por padrão (só ícones),
 /// expande ao passar o mouse por cima, recolhe ao tirar — com botão de
 /// fixar que trava expandido e ignora hover. Especificado com o usuário
-/// em 2026-08-22, junto do pedido de a área de conteúdo usar mais a
-/// largura da tela (ver `HomeLayoutService`).
+/// em 2026-08-22.
 class HomeSidebar extends StatefulWidget {
   const HomeSidebar({
     super.key,
