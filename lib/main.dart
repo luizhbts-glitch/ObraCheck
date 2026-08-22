@@ -45,6 +45,7 @@ import 'models/user_org_membership.dart';
 import 'models/user_project_membership.dart';
 import 'services/auth_service.dart';
 import 'services/app_update_service.dart';
+import 'services/home_layout_service.dart';
 import 'services/platform_service.dart';
 import 'services/sync_orchestrator.dart';
 import 'services/project_context_service.dart';
@@ -64,6 +65,7 @@ import 'utils/app_log.dart';
 import 'utils/hive_box_helper.dart';
 import 'utils/nc_utils.dart';
 import 'utils/project_scope.dart';
+import 'widgets/home_sidebar.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -226,6 +228,11 @@ void _safeRegisterAdapter(void Function() register) {
   }
 }
 
+/// Observa a navegação raiz só pra saber se a Home está ou não coberta
+/// por uma tela empurrada por cima — ver `HomeLayoutService`.
+final RouteObserver<PageRoute<dynamic>> homeRouteObserver =
+    RouteObserver<PageRoute<dynamic>>();
+
 class ObraCheckApp extends StatelessWidget {
   const ObraCheckApp({super.key, required this.themeController});
 
@@ -243,11 +250,22 @@ class ObraCheckApp extends StatelessWidget {
           return MaterialApp(
             debugShowCheckedModeBanner: false,
             title: 'Obra Check',
+            navigatorObservers: [homeRouteObserver],
             builder: (context, child) {
               if (child == null) return const SizedBox.shrink();
               final isLargeScreen = MediaQuery.of(context).size.width > 1000;
               if (!isLargeScreen) return child;
-              return Center(child: SizedBox(width: 900, child: child));
+              // Só a Home (rota raiz) usa a tela cheia — a barra lateral
+              // consome parte da largura ali. Telas empurradas por cima
+              // continuam com o limite de 900px, que é o que elas foram
+              // desenhadas pra usar.
+              return ValueListenableBuilder<bool>(
+                valueListenable: HomeLayoutService.instance.homeIsTopRoute,
+                builder: (context, homeIsTopRoute, _) {
+                  if (homeIsTopRoute) return child;
+                  return Center(child: SizedBox(width: 900, child: child));
+                },
+              );
             },
             theme: _lightTheme(),
             darkTheme: _darkTheme(),
@@ -607,8 +625,9 @@ class HomePage extends StatefulWidget {
   State<HomePage> createState() => _HomePageState();
 }
 
-class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
+class _HomePageState extends State<HomePage> with WidgetsBindingObserver, RouteAware {
   bool _syncing = false;
+  bool _sidebarPinned = (Hive.box('prefs').get('sidebar_pinned') as bool?) ?? false;
   SyncOrchestratorState _syncState = const SyncOrchestratorState.initial();
   bool _openingTodayDiary = false;
   bool _updateAvailable = AppUpdateService.instance.updateAvailable;
@@ -640,6 +659,15 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final route = ModalRoute.of(context);
+    if (route is PageRoute) {
+      homeRouteObserver.subscribe(this, route);
+    }
+  }
+
+  @override
   void dispose() {
     try {
       SyncOrchestrator.instance.stateNotifier.removeListener(
@@ -649,7 +677,25 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     AppUpdateService.instance.removeListener(_onAppUpdateChanged);
     _projectContext.removeListener(_onProjectContextChanged);
     WidgetsBinding.instance.removeObserver(this);
+    homeRouteObserver.unsubscribe(this);
     super.dispose();
+  }
+
+  // A Home nunca é desmontada (fica embaixo na pilha) — só sabemos que uma
+  // tela foi empurrada por cima via RouteAware. Ver `HomeLayoutService`.
+  @override
+  void didPushNext() {
+    HomeLayoutService.instance.homeIsTopRoute.value = false;
+  }
+
+  @override
+  void didPopNext() {
+    HomeLayoutService.instance.homeIsTopRoute.value = true;
+  }
+
+  void _toggleSidebarPinned(bool pinned) {
+    setState(() => _sidebarPinned = pinned);
+    unawaited(Hive.box('prefs').put('sidebar_pinned', pinned));
   }
 
   @override
@@ -1189,6 +1235,65 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     return null;
   }
 
+  // Ações do menu (barra lateral em telas grandes, lista "Ações rápidas"
+  // em telas pequenas) — extraídas pra métodos próprios pra não duplicar
+  // a navegação entre as duas apresentações.
+  Future<void> _openFichaFvs() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const FichaFvsModeScreen()),
+    );
+    _refreshDashboardClock();
+  }
+
+  Future<void> _openMapaVisual() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const VisualTowerMapScreen()),
+    );
+    _refreshDashboardClock();
+  }
+
+  Future<void> _openServicos() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const ServicesScreen()),
+    );
+    _refreshDashboardClock();
+  }
+
+  Future<void> _openEmpreiteiros() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const EmpreiteirosScreen()),
+    );
+    _refreshDashboardClock();
+  }
+
+  Future<void> _openRelatorios() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const ReportsScreen()),
+    );
+    _refreshDashboardClock();
+  }
+
+  Future<void> _openDiarioDeObra() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const DiaryListScreen()),
+    );
+    _refreshDashboardClock();
+  }
+
+  Future<void> _openAlmoxarife() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const AlmoxarifeScreen()),
+    );
+    _refreshDashboardClock();
+  }
+
   Future<void> _openTodayDiaryShortcut() async {
     if (_openingTodayDiary) return;
     final projectId = _projectContext.currentProjectIdSync.trim();
@@ -1478,7 +1583,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                             uniqueTodayInspections: conferidasHoje,
                           );
 
-                          return ListView(
+                          final isLargeScreen =
+                              MediaQuery.of(context).size.width > 1000;
+
+                          final dashboardList = ListView(
                             padding: EdgeInsets.fromLTRB(
                               16,
                               16,
@@ -1620,6 +1728,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                               ),
                               const SizedBox(height: 20),
 
+                              if (!isLargeScreen) ...[
                               const _SectionTitle('Ações rápidas'),
                               const SizedBox(height: 12),
 
@@ -1750,12 +1859,80 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                                 },
                               ),
                               const SizedBox(height: 10),
+                              ], // if (!isLargeScreen)
 
                               const SizedBox(height: 12),
                               _HomeFooterDate(
                                 date: AppDateUtils.getTodayDate(),
                               ),
                             ],
+                          );
+
+                          if (!isLargeScreen) return dashboardList;
+
+                          return ValueListenableBuilder<Box<DiaryRecord>>(
+                            valueListenable: _diariesBox.listenable(),
+                            builder: (context, diariesValue, _) {
+                              final diaryProjectId =
+                                  _projectContext.currentProjectIdSync;
+                              return Row(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  HomeSidebar(
+                                    pinned: _sidebarPinned,
+                                    onTogglePin: _toggleSidebarPinned,
+                                    items: [
+                                      SidebarAction(
+                                        icon: Icons
+                                            .assignment_turned_in_outlined,
+                                        label: 'Ficha F.V.S.',
+                                        onTap: _openFichaFvs,
+                                      ),
+                                      SidebarAction(
+                                        icon: Icons.apartment_outlined,
+                                        label: 'Mapa visual',
+                                        onTap: _openMapaVisual,
+                                      ),
+                                      SidebarAction(
+                                        icon: Icons.handyman_outlined,
+                                        label: 'Serviços',
+                                        onTap: _openServicos,
+                                      ),
+                                      SidebarAction(
+                                        icon: Icons.groups_outlined,
+                                        label: 'Empreiteiros',
+                                        onTap: _openEmpreiteiros,
+                                      ),
+                                      SidebarAction(
+                                        icon: Icons.picture_as_pdf_outlined,
+                                        label: 'Relatórios',
+                                        onTap: _openRelatorios,
+                                      ),
+                                      SidebarAction(
+                                        icon: Icons.menu_book_outlined,
+                                        label: 'Diário de Obra',
+                                        onTap: _openDiarioDeObra,
+                                      ),
+                                      SidebarAction(
+                                        icon: Icons.today_outlined,
+                                        label: 'Diário de hoje',
+                                        subtitle: _todayDiaryStatusText(
+                                          diaryProjectId,
+                                        ),
+                                        busy: _openingTodayDiary,
+                                        onTap: _openTodayDiaryShortcut,
+                                      ),
+                                      SidebarAction(
+                                        icon: Icons.inventory_2_outlined,
+                                        label: 'Almoxarife',
+                                        onTap: _openAlmoxarife,
+                                      ),
+                                    ],
+                                  ),
+                                  Expanded(child: dashboardList),
+                                ],
+                              );
+                            },
                           );
                         },
                       );

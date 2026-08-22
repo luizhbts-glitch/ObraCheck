@@ -6,6 +6,7 @@ import '../utils/project_identity.dart';
 import '../utils/project_scope.dart';
 import '../utils/similar_name.dart';
 import '../utils/text_case.dart';
+import '../theme/app_colors.dart';
 import 'estoque_equipamentos_screen.dart';
 import 'insumos_obra_screen.dart';
 
@@ -1359,6 +1360,7 @@ class _AlmoxarifeScreenState extends State<AlmoxarifeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final appColors = context.appColors;
     final equipments = _equipmentList();
     final movementCycles = _buildMovementCycles();
     final lastByEquipment = _lastMovementByEquipment();
@@ -1526,8 +1528,8 @@ class _AlmoxarifeScreenState extends State<AlmoxarifeScreen> {
                                   padding: const EdgeInsets.all(10),
                                   decoration: BoxDecoration(
                                     borderRadius: BorderRadius.circular(10),
-                                    border: Border.all(color: Colors.black12),
-                                    color: Colors.white,
+                                    border: Border.all(color: appColors.border),
+                                    color: appColors.surfaceAlt,
                                   ),
                                   child: Column(
                                     children: [
