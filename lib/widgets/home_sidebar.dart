@@ -126,14 +126,18 @@ class _SidebarTile extends StatelessWidget {
                   children: [
                     Text(
                       action.label,
-                      style: TextStyle(color: appColors.textPrimary, fontWeight: FontWeight.w600),
+                      style: TextStyle(
+                        color: appColors.textPrimary,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 13,
+                      ),
                       overflow: TextOverflow.ellipsis,
                       maxLines: 1,
                     ),
                     if (action.subtitle != null)
                       Text(
                         action.subtitle!,
-                        style: TextStyle(color: appColors.textSecondary, fontSize: 11),
+                        style: TextStyle(color: appColors.textSecondary, fontSize: 10.5),
                         overflow: TextOverflow.ellipsis,
                         maxLines: 1,
                       ),

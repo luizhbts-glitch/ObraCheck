@@ -15,7 +15,7 @@ import 'screens/diary_edit_screen.dart';
 import 'screens/ficha_fvs_mode_screen.dart';
 import 'screens/visual_tower_map_screen.dart';
 import 'screens/empreiteiros_screen.dart';
-import 'screens/almoxarife_screen.dart';
+import 'screens/almoxarifado_hub_screen.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'models/cargo_record.dart';
 import 'models/centro_custo_record.dart';
@@ -1264,7 +1264,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   }
 
   Future<void> _openAlmoxarife() async {
-    await _openSection(context, (_) => const AlmoxarifeScreen());
+    await _openSection(context, (_) => const AlmoxarifadoHubScreen());
     _refreshDashboardClock();
   }
 
@@ -1825,7 +1825,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                                   await Navigator.push(
                                     context,
                                     MaterialPageRoute(
-                                      builder: (_) => const AlmoxarifeScreen(),
+                                      builder: (_) => const AlmoxarifadoHubScreen(),
                                     ),
                                   );
                                   _refreshDashboardClock();
