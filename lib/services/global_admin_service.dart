@@ -46,10 +46,15 @@ class GlobalAdminService {
     if (uid == null || uid.isEmpty) return false;
 
     try {
+      // Timeout explícito: sem ele, uma cota do Firestore esgotada deixava
+      // essa chamada pendurada indefinidamente — como isso roda logo no
+      // início de toda hidratação de sessão, travava login e validação de
+      // código de acesso junto.
       final doc = await FirebaseFirestore.instance
           .collection('global_admins')
           .doc(uid)
-          .get();
+          .get()
+          .timeout(const Duration(seconds: 10));
       final isAdmin = doc.exists && doc.data()?['isActive'] != false;
       await _prefs.put('$_prefsKeyPrefix$uid', isAdmin);
       _checkedThisSession = true;

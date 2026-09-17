@@ -1,5 +1,7 @@
 // ignore_for_file: avoid_print
 
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:hive/hive.dart';
 
@@ -65,6 +67,12 @@ class ProjectMembersService {
 
   static final ProjectMembersService instance = ProjectMembersService._();
   static const String _masterBootstrapCode = 'MASTER-CHECK-001';
+
+  /// Sem isso, uma chamada ao Firestore em "maximum backoff delay" (cota
+  /// esgotada — ver Dívida Técnica) fica pendurada por tempo indefinido,
+  /// e a UI (botão "Gerar código", por exemplo) nunca sai do estado de
+  /// carregando. Falha rápido com uma mensagem em vez de travar pra sempre.
+  static const Duration _firestoreTimeout = Duration(seconds: 10);
 
   FirebaseFirestore get _firestore => FirebaseFirestore.instance;
   Box<UserProjectMembership> get _memberships => Hive.box<UserProjectMembership>('user_project_memberships');
@@ -178,7 +186,8 @@ class ProjectMembersService {
           .doc(projectId)
           .collection('access_codes')
           .doc(record.id)
-          .set(record.toMap(), SetOptions(merge: true));
+          .set(record.toMap(), SetOptions(merge: true))
+          .timeout(_firestoreTimeout);
 
       await _accessCodes.put(
         record.id,
@@ -252,7 +261,8 @@ class ProjectMembersService {
             .collectionGroup('access_codes')
             .where('code', isEqualTo: normalized)
             .limit(1)
-            .get();
+            .get()
+            .timeout(_firestoreTimeout);
         if (snap.docs.isNotEmpty) {
           remoteCodeRef = snap.docs.first.reference;
           final data = Map<String, dynamic>.from(snap.docs.first.data());
@@ -407,14 +417,16 @@ class ProjectMembersService {
           .doc(user.uid)
           .collection('project_memberships')
           .doc(membership.id)
-          .set(membership.toMap(), SetOptions(merge: true));
+          .set(membership.toMap(), SetOptions(merge: true))
+          .timeout(_firestoreTimeout);
 
       await _firestore
           .collection('projects')
           .doc(consumed.projectId)
           .collection('access_codes')
           .doc(consumed.id)
-          .set(consumed.toMap(), SetOptions(merge: true));
+          .set(consumed.toMap(), SetOptions(merge: true))
+          .timeout(_firestoreTimeout);
 
       print(
         '$diag remotePersist success '
@@ -467,7 +479,7 @@ class ProjectMembersService {
     if (existing != null) return true;
 
     try {
-      final snap = await _firestore.collection('projects').doc(pid).get();
+      final snap = await _firestore.collection('projects').doc(pid).get().timeout(_firestoreTimeout);
       final data = snap.data();
       final now = DateTime.now();
 
@@ -640,7 +652,7 @@ class ProjectMembersService {
     final ids = uids.map((e) => e.trim()).where((e) => e.isNotEmpty).toSet().toList();
     for (final uid in ids) {
       try {
-        final doc = await _firestore.collection('users').doc(uid).get();
+        final doc = await _firestore.collection('users').doc(uid).get().timeout(_firestoreTimeout);
         final data = doc.data();
         final email = data?['email']?.toString().trim();
         final nome = data?['nome']?.toString().trim();
@@ -652,7 +664,8 @@ class ProjectMembersService {
           result[uid] = email;
         }
       } catch (_) {
-        // offline-first: se falhar remoto, mantém fallback para UID curto na UI.
+        // offline-first: se falhar remoto (ou der timeout), mantém fallback
+        // para UID curto na UI em vez de travar a tela indefinidamente.
       }
     }
     return result;
@@ -663,7 +676,7 @@ class ProjectMembersService {
     final ids = uids.map((e) => e.trim()).where((e) => e.isNotEmpty).toSet().toList();
     for (final uid in ids) {
       try {
-        final doc = await _firestore.collection('users').doc(uid).get();
+        final doc = await _firestore.collection('users').doc(uid).get().timeout(_firestoreTimeout);
         final data = doc.data();
         final email = data?['email']?.toString().trim();
         if (email != null && email.isNotEmpty) {

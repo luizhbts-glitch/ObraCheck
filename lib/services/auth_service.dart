@@ -1,5 +1,7 @@
 // ignore_for_file: avoid_print
 
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
@@ -69,8 +71,10 @@ class AuthService {
       await _firestore.collection('users').doc(user.uid).set(
         {'uid': user.uid, 'email': email},
         SetOptions(merge: true),
-      );
+      ).timeout(const Duration(seconds: 10));
     } catch (e) {
+      // Timeout incluído aqui de propósito: sem ele, uma cota do Firestore
+      // esgotada travava o login inteiro (a tela nunca saía de "entrando").
       debugPrint('[AuthService._ensureUserDocHasEmail] falhou: $e');
     }
   }
@@ -160,8 +164,27 @@ class AuthService {
     print('$diag [FIRESTORE][START] projectId=$projectId uid=$uid path=$documentPath payload=$userPayload');
 
     try {
-      await _firestore.collection('users').doc(uid).set(userPayload);
+      // Timeout explícito: sem isso, uma chamada em "maximum backoff delay"
+      // (cota do Firestore esgotada) fica pendurada indefinidamente — a
+      // tela de cadastro nunca sai do estado de carregando, mesmo com a
+      // conta já criada no Auth.
+      await _firestore
+          .collection('users')
+          .doc(uid)
+          .set(userPayload)
+          .timeout(const Duration(seconds: 10));
       print('$diag [FIRESTORE][SUCCESS] projectId=$projectId uid=$uid path=$documentPath');
+    } on TimeoutException {
+      print(
+        '$diag [FIRESTORE][TIMEOUT] projectId=$projectId uid=$uid path=$documentPath '
+        'payload=$userPayload',
+      );
+      throw Exception(
+        'Cadastro criado, mas salvar os dados no Firestore demorou demais — '
+        'provavelmente a cota do Firebase está esgotada agora. Tente entrar '
+        'com a mesma conta em alguns minutos; se persistir, avise o '
+        'administrador.',
+      );
     } on FirebaseException catch (e) {
       print(
         '$diag [FIRESTORE][FAIL] '

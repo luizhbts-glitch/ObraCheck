@@ -17,6 +17,12 @@ class ProjectContextService extends ChangeNotifier {
 
   static final ProjectContextService instance = ProjectContextService._();
 
+  /// Sem timeout explícito, uma chamada em "maximum backoff delay" (cota
+  /// do Firestore esgotada) fica pendurada indefinidamente e qualquer
+  /// tela que dependa de hidratar sessão/obra (login, validar código de
+  /// acesso) nunca sai do estado de carregando.
+  static const Duration _firestoreTimeout = Duration(seconds: 10);
+
   static const String _prefCurrentProjectId = 'current_project_id';
   static const String _prefCurrentProjectCode = 'current_project_code';
 
@@ -259,7 +265,8 @@ class ProjectContextService extends ChangeNotifier {
           .collection('users')
           .doc(user.uid)
           .collection('project_memberships')
-          .get();
+          .get()
+          .timeout(_firestoreTimeout);
 
       for (final doc in membershipsSnap.docs) {
         final data = Map<String, dynamic>.from(doc.data());
@@ -283,7 +290,8 @@ class ProjectContextService extends ChangeNotifier {
     for (final pid in projectIdsToFetch) {
       if (_projects.containsKey(pid)) continue;
       try {
-        final snap = await _firestore.collection('projects').doc(pid).get();
+        final snap =
+            await _firestore.collection('projects').doc(pid).get().timeout(_firestoreTimeout);
         final data = snap.data();
         if (data == null) continue;
         final now = DateTime.now();
@@ -316,7 +324,8 @@ class ProjectContextService extends ChangeNotifier {
           .collection('users')
           .doc(uid)
           .collection('org_memberships')
-          .get();
+          .get()
+          .timeout(_firestoreTimeout);
       for (final doc in snap.docs) {
         final data = Map<String, dynamic>.from(doc.data());
         final rec = UserOrgMembership.fromMap({

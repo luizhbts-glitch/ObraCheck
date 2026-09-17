@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 
@@ -41,7 +43,15 @@ class UserProfileService {
     if (user == null) return null;
 
     try {
-      final doc = await _firestore.collection('users').doc(user.uid).get();
+      // Timeout explícito: sem isso, uma chamada em "maximum backoff delay"
+      // (cota do Firestore esgotada) fica pendurada indefinidamente e
+      // qualquer tela que dependa do perfil (gerar código de acesso, por
+      // exemplo) nunca sai do estado de carregando.
+      final doc = await _firestore
+          .collection('users')
+          .doc(user.uid)
+          .get()
+          .timeout(const Duration(seconds: 10));
       final data = doc.data();
       if (data == null) {
         return UserProfileData(
