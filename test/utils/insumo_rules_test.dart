@@ -44,4 +44,69 @@ void main() {
       expect(validarRetiradaInsumo(quantidadeAtual: 3, quantidadeRetirada: 3), isNull);
     });
   });
+
+  group('calcularDivergenciaConferencia', () {
+    test('positiva quando conferido é maior que esperado (sobra)', () {
+      expect(
+        calcularDivergenciaConferencia(quantidadeEsperada: 23, quantidadeConferida: 25),
+        2,
+      );
+    });
+
+    test('negativa quando conferido é menor que esperado (furo)', () {
+      expect(
+        calcularDivergenciaConferencia(quantidadeEsperada: 23, quantidadeConferida: 20),
+        -3,
+      );
+    });
+
+    test('zero quando bate certinho', () {
+      expect(
+        calcularDivergenciaConferencia(quantidadeEsperada: 23, quantidadeConferida: 23),
+        0,
+      );
+    });
+  });
+
+  group('validarConferenciaInsumo', () {
+    test('aceita sem observação quando não há divergência', () {
+      expect(
+        validarConferenciaInsumo(quantidadeConferida: 23, divergencia: 0),
+        isNull,
+      );
+    });
+
+    test('exige observação quando há divergência', () {
+      expect(
+        validarConferenciaInsumo(quantidadeConferida: 20, divergencia: -3),
+        isNotNull,
+      );
+      expect(
+        validarConferenciaInsumo(
+          quantidadeConferida: 20,
+          divergencia: -3,
+          observacao: '  ',
+        ),
+        isNotNull,
+      );
+    });
+
+    test('aceita divergência com observação preenchida', () {
+      expect(
+        validarConferenciaInsumo(
+          quantidadeConferida: 20,
+          divergencia: -3,
+          observacao: 'Estava de atestado, outra pessoa cobriu.',
+        ),
+        isNull,
+      );
+    });
+
+    test('rejeita quantidade negativa', () {
+      expect(
+        validarConferenciaInsumo(quantidadeConferida: -1, divergencia: -24),
+        isNotNull,
+      );
+    });
+  });
 }

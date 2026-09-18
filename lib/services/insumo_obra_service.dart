@@ -18,6 +18,8 @@ class InsumoObraService {
   Box<InsumoObraRecord> get _insumos => Hive.box<InsumoObraRecord>('insumos_obra');
   Box<InsumoMovimentoRecord> get _movimentos =>
       Hive.box<InsumoMovimentoRecord>('insumos_obra_movimentos');
+  Box<InsumoConferenciaRecord> get _conferencias =>
+      Hive.box<InsumoConferenciaRecord>('insumos_obra_conferencias');
 
   Future<void> _mirror(String path, Map<String, dynamic> data) async {
     try {
@@ -49,6 +51,7 @@ class InsumoObraService {
     String endereco = '',
     double estoqueMinimo = 0,
     double quantidadeInicial = 0,
+    String unidade = UnidadeMedida.unidade,
   }) async {
     final now = DateTime.now();
     final record = InsumoObraRecord(
@@ -58,6 +61,7 @@ class InsumoObraService {
       endereco: endereco.trim(),
       estoqueMinimo: estoqueMinimo,
       quantidadeAtual: quantidadeInicial,
+      unidade: unidade,
       pendingSync: true,
       createdAt: now,
       updatedAt: now,
@@ -67,11 +71,18 @@ class InsumoObraService {
     return record;
   }
 
-  Future<void> editar(InsumoObraRecord atual, {String? material, String? endereco, double? estoqueMinimo}) async {
+  Future<void> editar(
+    InsumoObraRecord atual, {
+    String? material,
+    String? endereco,
+    double? estoqueMinimo,
+    String? unidade,
+  }) async {
     final atualizado = atual.copyWith(
       material: material?.trim(),
       endereco: endereco?.trim(),
       estoqueMinimo: estoqueMinimo,
+      unidade: unidade,
       pendingSync: true,
       updatedAt: DateTime.now(),
     );
@@ -160,4 +171,122 @@ class InsumoObraService {
       movimento.toMap(),
     );
   }
+
+  // ── Conferência (controle, não auditoria) ───────────────────────────
+  //
+  // Especificado com o usuário em 2026-09-18: todo insumo que teve
+  // retirada desde a última conferência (e não foi retirado só hoje —
+  // dá um dia pra "amanhã recontar") aparece como pendente. Reconferir
+  // resolve TODAS as retiradas pendentes daquele insumo de uma vez — não
+  // é um item por dia, é "confere o estoque atual contra o que o
+  // sistema acha que tem agora".
+
+  /// Data (sem hora) da última conferência feita pra esse insumo, ou
+  /// `null` se nunca foi conferido.
+  DateTime? _ultimaConferenciaEm(String insumoId) {
+    DateTime? ultima;
+    for (final c in _conferencias.values) {
+      if (c.insumoId != insumoId || c.deleted) continue;
+      if (ultima == null || c.createdAt.isAfter(ultima)) ultima = c.createdAt;
+    }
+    return ultima;
+  }
+
+  /// Insumos com retirada pendente de reconferência — só entram na lista
+  /// no dia seguinte à retirada (retiradas de hoje ainda não contam).
+  List<PendenciaConferencia> pendenciasDeConferencia(String projectId) {
+    final hoje = DateTime.now();
+    final inicioDeHoje = DateTime(hoje.year, hoje.month, hoje.day);
+
+    final pendencias = <PendenciaConferencia>[];
+    for (final insumo in listar(projectId)) {
+      final ultimaConferencia = _ultimaConferenciaEm(insumo.id);
+      final retiradasPendentes = _movimentos.values.where((m) =>
+          m.insumoId == insumo.id &&
+          !m.deleted &&
+          m.tipo == TipoMovimentoInsumo.retirada &&
+          m.createdAt.isBefore(inicioDeHoje) &&
+          (ultimaConferencia == null || m.createdAt.isAfter(ultimaConferencia)));
+
+      if (retiradasPendentes.isEmpty) continue;
+
+      final quantidadeRetiradaPendente =
+          retiradasPendentes.fold<double>(0, (total, m) => total + m.quantidade);
+      final ultimaRetiradaEm = retiradasPendentes
+          .map((m) => m.createdAt)
+          .reduce((a, b) => a.isAfter(b) ? a : b);
+
+      pendencias.add(PendenciaConferencia(
+        insumo: insumo,
+        quantidadeRetiradaPendente: quantidadeRetiradaPendente,
+        ultimaRetiradaEm: ultimaRetiradaEm,
+      ));
+    }
+
+    pendencias.sort((a, b) => a.ultimaRetiradaEm.compareTo(b.ultimaRetiradaEm));
+    return pendencias;
+  }
+
+  /// Registra a conferência: se bateu, só marca resolvido; se divergiu,
+  /// já corrige o estoque (via `atualizarContagem`) e grava a ocorrência
+  /// com a observação de quem conferiu.
+  Future<void> registrarConferencia({
+    required InsumoObraRecord insumo,
+    required double quantidadeConferida,
+    String? observacao,
+  }) async {
+    final agora = DateTime.now();
+    final divergencia = quantidadeConferida - insumo.quantidadeAtual;
+
+    if (divergencia != 0) {
+      await atualizarContagem(insumo, quantidadeConferida);
+    }
+
+    final registro = InsumoConferenciaRecord(
+      id: 'insumoconf_${agora.microsecondsSinceEpoch}',
+      projectId: insumo.projectId,
+      insumoId: insumo.id,
+      material: insumo.material,
+      unidade: insumo.unidade,
+      quantidadeEsperada: insumo.quantidadeAtual,
+      quantidadeConferida: quantidadeConferida,
+      divergencia: divergencia,
+      observacao: (observacao ?? '').trim().isEmpty ? null : observacao!.trim(),
+      pendingSync: true,
+      createdAt: agora,
+    );
+    await _conferencias.put(registro.id, registro);
+    await _mirror(
+      'projects/${insumo.projectId}/insumos_obra_conferencias/${registro.id}',
+      registro.toMap(),
+    );
+  }
+
+  /// Histórico de conferências — `somenteComDivergencia` filtra só as
+  /// ocorrências (furos/sobras), que é o que normalmente importa revisar.
+  List<InsumoConferenciaRecord> historicoConferencias(
+    String projectId, {
+    bool somenteComDivergencia = false,
+  }) {
+    final list = _conferencias.values
+        .where((c) => c.projectId == projectId && !c.deleted)
+        .where((c) => !somenteComDivergencia || c.temDivergencia)
+        .toList()
+      ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    return list;
+  }
+}
+
+/// Um insumo pendente de reconferência — some da lista assim que alguém
+/// registra a conferência dele.
+class PendenciaConferencia {
+  const PendenciaConferencia({
+    required this.insumo,
+    required this.quantidadeRetiradaPendente,
+    required this.ultimaRetiradaEm,
+  });
+
+  final InsumoObraRecord insumo;
+  final double quantidadeRetiradaPendente;
+  final DateTime ultimaRetiradaEm;
 }

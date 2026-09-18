@@ -148,6 +148,7 @@ Future<void> _openLazyBoxes() async {
   await HiveBoxHelper.openBoxSafe<EquipamentoEstoqueRecord>('equipamentos_estoque');
   await HiveBoxHelper.openBoxSafe<InsumoObraRecord>('insumos_obra');
   await HiveBoxHelper.openBoxSafe<InsumoMovimentoRecord>('insumos_obra_movimentos');
+  await HiveBoxHelper.openBoxSafe<InsumoConferenciaRecord>('insumos_obra_conferencias');
   await HiveBoxHelper.openBoxRawSafe('project_settings');
   await HiveBoxHelper.openBoxRawSafe('equipments');
   await HiveBoxHelper.openBoxRawSafe('equipment_movements');
@@ -214,6 +215,7 @@ void _registerHiveAdapters() {
   _safeRegisterAdapter(() => Hive.registerAdapter(EquipamentoEstoqueRecordAdapter()));
   _safeRegisterAdapter(() => Hive.registerAdapter(InsumoObraRecordAdapter()));
   _safeRegisterAdapter(() => Hive.registerAdapter(InsumoMovimentoRecordAdapter()));
+  _safeRegisterAdapter(() => Hive.registerAdapter(InsumoConferenciaRecordAdapter()));
 }
 
 void _safeRegisterAdapter(void Function() register) {

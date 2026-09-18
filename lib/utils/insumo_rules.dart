@@ -28,3 +28,30 @@ String? validarRetiradaInsumo({
   }
   return null;
 }
+
+/// Diferença entre o que foi contado fisicamente e o que o sistema
+/// esperava — positivo quando sobra, negativo quando falta.
+double calcularDivergenciaConferencia({
+  required double quantidadeEsperada,
+  required double quantidadeConferida,
+}) {
+  return quantidadeConferida - quantidadeEsperada;
+}
+
+/// Valida uma conferência de estoque: quantidade não pode ser negativa, e
+/// — o ponto central do controle — toda divergência exige uma explicação
+/// de quem conferiu. Não é auditoria burocrática, é registrar a ocorrência
+/// ("ontem estava de atestado", por exemplo) pra quem olhar depois
+/// entender o furo, não só ver um número diferente sem contexto.
+String? validarConferenciaInsumo({
+  required double quantidadeConferida,
+  required double divergencia,
+  String? observacao,
+}) {
+  if (quantidadeConferida < 0) return 'Quantidade não pode ser negativa.';
+  if (divergencia != 0 && (observacao == null || observacao.trim().isEmpty)) {
+    return 'A contagem não bateu com o estoque esperado — explique o que aconteceu '
+        '(ex.: "estava de atestado, outra pessoa cobriu").';
+  }
+  return null;
+}

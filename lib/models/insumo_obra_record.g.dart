@@ -27,13 +27,14 @@ class InsumoObraRecordAdapter extends TypeAdapter<InsumoObraRecord> {
       pendingSync: fields[7] as bool,
       createdAt: fields[8] as DateTime,
       updatedAt: fields[9] as DateTime,
+      unidade: fields[10] as String,
     );
   }
 
   @override
   void write(BinaryWriter writer, InsumoObraRecord obj) {
     writer
-      ..writeByte(10)
+      ..writeByte(11)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -53,7 +54,9 @@ class InsumoObraRecordAdapter extends TypeAdapter<InsumoObraRecord> {
       ..writeByte(8)
       ..write(obj.createdAt)
       ..writeByte(9)
-      ..write(obj.updatedAt);
+      ..write(obj.updatedAt)
+      ..writeByte(10)
+      ..write(obj.unidade);
   }
 
   @override
@@ -124,6 +127,74 @@ class InsumoMovimentoRecordAdapter extends TypeAdapter<InsumoMovimentoRecord> {
   bool operator ==(Object other) =>
       identical(this, other) ||
       other is InsumoMovimentoRecordAdapter &&
+          runtimeType == other.runtimeType &&
+          typeId == other.typeId;
+}
+
+class InsumoConferenciaRecordAdapter
+    extends TypeAdapter<InsumoConferenciaRecord> {
+  @override
+  final int typeId = 39;
+
+  @override
+  InsumoConferenciaRecord read(BinaryReader reader) {
+    final numOfFields = reader.readByte();
+    final fields = <int, dynamic>{
+      for (int i = 0; i < numOfFields; i++) reader.readByte(): reader.read(),
+    };
+    return InsumoConferenciaRecord(
+      id: fields[0] as String,
+      projectId: fields[1] as String,
+      insumoId: fields[2] as String,
+      material: fields[3] as String,
+      unidade: fields[4] as String,
+      quantidadeEsperada: fields[5] as double,
+      quantidadeConferida: fields[6] as double,
+      divergencia: fields[7] as double,
+      observacao: fields[8] as String?,
+      deleted: fields[9] as bool,
+      pendingSync: fields[10] as bool,
+      createdAt: fields[11] as DateTime,
+    );
+  }
+
+  @override
+  void write(BinaryWriter writer, InsumoConferenciaRecord obj) {
+    writer
+      ..writeByte(12)
+      ..writeByte(0)
+      ..write(obj.id)
+      ..writeByte(1)
+      ..write(obj.projectId)
+      ..writeByte(2)
+      ..write(obj.insumoId)
+      ..writeByte(3)
+      ..write(obj.material)
+      ..writeByte(4)
+      ..write(obj.unidade)
+      ..writeByte(5)
+      ..write(obj.quantidadeEsperada)
+      ..writeByte(6)
+      ..write(obj.quantidadeConferida)
+      ..writeByte(7)
+      ..write(obj.divergencia)
+      ..writeByte(8)
+      ..write(obj.observacao)
+      ..writeByte(9)
+      ..write(obj.deleted)
+      ..writeByte(10)
+      ..write(obj.pendingSync)
+      ..writeByte(11)
+      ..write(obj.createdAt);
+  }
+
+  @override
+  int get hashCode => typeId.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is InsumoConferenciaRecordAdapter &&
           runtimeType == other.runtimeType &&
           typeId == other.typeId;
 }
