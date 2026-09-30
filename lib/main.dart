@@ -1587,6 +1587,11 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                               if (_updateAvailable) ...[
                                 const SizedBox(height: 12),
                                 _AppUpdateCard(
+                                  subtitle:
+                                      AppUpdateService.instance.updateSubtitle,
+                                  actionLabel: AppUpdateService
+                                      .instance
+                                      .updateActionLabel,
                                   onUpdate: () async {
                                     await AppUpdateService.instance
                                         .applyUpdate();
@@ -2072,9 +2077,15 @@ class _ObraHeader extends StatelessWidget {
 }
 
 class _AppUpdateCard extends StatelessWidget {
-  const _AppUpdateCard({required this.onUpdate});
+  const _AppUpdateCard({
+    required this.onUpdate,
+    required this.subtitle,
+    required this.actionLabel,
+  });
 
   final Future<void> Function() onUpdate;
+  final String subtitle;
+  final String actionLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -2103,7 +2114,7 @@ class _AppUpdateCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  'Há uma versão nova do Obra Check pronta para carregar.',
+                  subtitle,
                   style: TextStyle(
                     color: appColors.textSecondary,
                     fontSize: 12,
@@ -2113,7 +2124,7 @@ class _AppUpdateCard extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 8),
-          FilledButton(onPressed: onUpdate, child: const Text('Atualizar')),
+          FilledButton(onPressed: onUpdate, child: Text(actionLabel)),
         ],
       ),
     );

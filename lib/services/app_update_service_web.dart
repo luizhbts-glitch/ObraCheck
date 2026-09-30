@@ -32,6 +32,13 @@ class _WebAppUpdateService extends ChangeNotifier implements AppUpdateService {
   bool get updateAvailable => _updateAvailable;
 
   @override
+  String get updateSubtitle =>
+      'Há uma versão nova do Obra Check pronta para carregar.';
+
+  @override
+  String get updateActionLabel => 'Atualizar';
+
+  @override
   Future<void> checkNow() async {
     if (_checking) return;
     _checking = true;
