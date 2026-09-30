@@ -283,6 +283,237 @@ class PdfReportService {
     return PdfExportResult(fileName: fileName, filePath: file.path);
   }
 
+  /// Relatório individual em lote — pedido do usuário em 2026-09-30: escolhe
+  /// torre + FVS, seleciona várias unidades (ex.: 1101, 1102, 1103) e sai um
+  /// PDF só, com uma página por unidade. Página enxuta ("comprovação de
+  /// medição"): contagem geral (conforme/corrigido/NC aberta), detalha só os
+  /// itens que precisam de atenção (X/XO) e anexa as fotos da unidade — não
+  /// lista item por item que está OK, já que o objetivo é comprovar o que
+  /// está sendo pago, não repetir o checklist inteiro.
+  Future<PdfExportResult> exportarRelatorioIndividualEmLote(
+    List<InspectionRecord> records,
+  ) async {
+    final pdf = pw.Document();
+    for (final record in records) {
+      final payload = await _payloadFromRecord(record);
+      _addResumoMedicaoPage(pdf, payload);
+    }
+    final bytes = await pdf.save();
+
+    final dt = DateTime.now();
+    final stamp =
+        '${dt.year.toString().padLeft(4, '0')}${dt.month.toString().padLeft(2, '0')}${dt.day.toString().padLeft(2, '0')}_${dt.hour.toString().padLeft(2, '0')}${dt.minute.toString().padLeft(2, '0')}';
+    final first = records.first;
+    final fileName = _sanitize(
+      'Relatorio_Individual_${first.obra}_${first.torre}_${first.fvsCodigo}_$stamp.pdf',
+    );
+
+    if (kIsWeb) {
+      downloadPdfBytes(bytes: bytes, fileName: fileName);
+      return PdfExportResult(fileName: fileName, downloadedInBrowser: true);
+    }
+
+    final file = await _savePdfToDocuments(bytes: bytes, fileName: fileName);
+    try {
+      await Share.shareXFiles([
+        XFile(file.path),
+      ], text: 'Relatório individual de inspeção — ${records.length} unidade(s)');
+    } catch (_) {}
+    return PdfExportResult(fileName: fileName, filePath: file.path);
+  }
+
+  void _addResumoMedicaoPage(pw.Document pdf, _FvsPdfPayload payload) {
+    pdf.addPage(
+      pw.MultiPage(
+        pageFormat: PdfPageFormat.a4,
+        margin: const pw.EdgeInsets.fromLTRB(32, 28, 32, 32),
+        header: (ctx) {
+          if (ctx.pageNumber != 1) return pw.SizedBox.shrink();
+          return pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              _buildHeader(payload, folhaText: 'Comprovação de medição'),
+              pw.SizedBox(height: 8),
+              _buildMetaGrid(payload),
+            ],
+          );
+        },
+        footer: (ctx) => _buildFooter(payload),
+        build: (ctx) {
+          final content = <pw.Widget>[
+            pw.SizedBox(height: 10),
+            _buildResumoCountsSection(payload),
+          ];
+
+          final atencao = payload.items.where((i) {
+            final st = _normalizeStatus(i.status);
+            return st == 'nok' || st == 'okafterfix';
+          }).toList();
+          if (atencao.isNotEmpty) {
+            content.add(pw.SizedBox(height: 10));
+            content.add(_buildAtencaoItemsSection(atencao));
+          }
+
+          if (payload.photos.isNotEmpty) {
+            content.add(pw.SizedBox(height: 10));
+            content.add(_buildSectionTitle('REGISTRO FOTOGRÁFICO'));
+            content.add(_buildPhotosSection(payload.photos));
+          }
+
+          return content;
+        },
+      ),
+    );
+  }
+
+  pw.Widget _buildResumoCountsSection(_FvsPdfPayload payload) {
+    var ok = 0, nok = 0, okAfterFix = 0, pending = 0;
+    for (final item in payload.items) {
+      switch (_normalizeStatus(item.status)) {
+        case 'ok':
+          ok++;
+          break;
+        case 'nok':
+          nok++;
+          break;
+        case 'okafterfix':
+          okAfterFix++;
+          break;
+        default:
+          pending++;
+      }
+    }
+    final total = payload.items.length;
+    return pw.Container(
+      decoration: pw.BoxDecoration(
+        border: pw.Border.all(color: _hex(0xFF1A1A1A), width: 1),
+      ),
+      padding: const pw.EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      child: pw.Row(
+        mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+        children: [
+          _resumoPill('Itens verificados', '$total', _hex(0xFF1A1A1A)),
+          _resumoPill('Conforme (O)', '$ok', _hex(0xFF166534)),
+          _resumoPill('Corrigido (XO)', '$okAfterFix', _hex(0xFF92400E)),
+          _resumoPill('NC aberta (X)', '$nok', _hex(0xFF991B1B)),
+          if (pending > 0) _resumoPill('Pendente', '$pending', _hex(0xFF555555)),
+        ],
+      ),
+    );
+  }
+
+  pw.Widget _resumoPill(String label, String value, PdfColor color) {
+    return pw.Column(
+      crossAxisAlignment: pw.CrossAxisAlignment.start,
+      children: [
+        pw.Text(
+          value,
+          style: pw.TextStyle(
+            font: pw.Font.helveticaBold(),
+            fontSize: 16,
+            color: color,
+          ),
+        ),
+        pw.SizedBox(height: 2),
+        pw.Text(
+          label,
+          style: pw.TextStyle(
+            font: pw.Font.helvetica(),
+            fontSize: 7.5,
+            color: _hex(0xFF777777),
+          ),
+        ),
+      ],
+    );
+  }
+
+  pw.Widget _buildAtencaoItemsSection(List<InspectionItemResult> items) {
+    final rows = <pw.TableRow>[
+      pw.TableRow(
+        decoration: pw.BoxDecoration(color: _hex(0xFFFEF2F2)),
+        children: [
+          _ncHeaderCell('N°', align: pw.TextAlign.center),
+          _ncHeaderCell('ITEM / DESCRIÇÃO', align: pw.TextAlign.left),
+          _ncHeaderCell('STATUS', align: pw.TextAlign.center),
+          _ncHeaderCell('OBSERVAÇÃO', align: pw.TextAlign.left),
+        ],
+      ),
+    ];
+    for (var i = 0; i < items.length; i++) {
+      final item = items[i];
+      final isNok = _normalizeStatus(item.status) == 'nok';
+      rows.add(
+        pw.TableRow(
+          children: [
+            _tableCell(
+              (i + 1).toString().padLeft(2, '0'),
+              align: pw.TextAlign.center,
+              fontSize: 8,
+              color: _hex(0xFF1A1A1A),
+            ),
+            _tableCell(
+              item.descricao,
+              align: pw.TextAlign.left,
+              fontSize: 8,
+              color: _hex(0xFF1A1A1A),
+            ),
+            _tableCell(
+              isNok ? 'X' : 'XO',
+              align: pw.TextAlign.center,
+              fontSize: 8,
+              color: isNok ? _hex(0xFF991B1B) : _hex(0xFF92400E),
+            ),
+            _tableCell(
+              item.obs,
+              align: pw.TextAlign.left,
+              fontSize: 8,
+              color: _hex(0xFF1A1A1A),
+            ),
+          ],
+        ),
+      );
+    }
+    return pw.Container(
+      decoration: pw.BoxDecoration(
+        border: pw.Border.all(color: _hex(0xFF991B1B), width: 1),
+      ),
+      child: pw.Column(
+        children: [
+          pw.Container(
+            width: double.infinity,
+            color: _hex(0xFF991B1B),
+            padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+            child: pw.Text(
+              'ITENS QUE PRECISAM DE ATENÇÃO',
+              style: pw.TextStyle(
+                font: pw.Font.helveticaBold(),
+                fontSize: 7.5,
+                color: PdfColors.white,
+                letterSpacing: 0.8,
+              ),
+            ),
+          ),
+          pw.Table(
+            border: pw.TableBorder(
+              horizontalInside: pw.BorderSide(
+                color: _hex(0xFFFDE8E8),
+                width: 1,
+              ),
+              verticalInside: pw.BorderSide(color: _hex(0xFFFDE8E8), width: 1),
+            ),
+            columnWidths: {
+              0: const pw.FlexColumnWidth(0.4),
+              1: const pw.FlexColumnWidth(3),
+              2: const pw.FlexColumnWidth(0.8),
+              3: const pw.FlexColumnWidth(3),
+            },
+            children: rows,
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<pw.Document> _buildConsolidadoPdfDoc({
     required String projectId,
     required String obraFixa,

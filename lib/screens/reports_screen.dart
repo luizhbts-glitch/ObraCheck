@@ -753,6 +753,215 @@ class _ReportsScreenState extends State<ReportsScreen> {
     }
   }
 
+  /// Relatório individual em lote — pedido do usuário em 2026-09-30: hoje só
+  /// dá pra gerar o consolidado (todas as unidades da torre juntas numa
+  /// matriz) ou um individual avulso via tela de NC (e só se tiver NC). Esse
+  /// fluxo deixa escolher torre + FVS e depois quantas unidades quiser
+  /// (ex.: 1101, 1102, 1103), gerando um PDF só com uma página por unidade,
+  /// tenha NC ou não.
+  Future<void> _generateIndividualBatchReport(
+    List<InspectionRecord> source,
+  ) async {
+    if (_isGeneratingReportPdf) return;
+
+    final scope = await _pickPdfScope();
+    if (!mounted || scope == null) return;
+
+    final selectedSheetId = (scope.operationalSheetId ?? '').trim();
+    final filtered = source.where((r) {
+      if (r.projectId != _currentProjectId) return false;
+      if (r.obra != _obraFixa) return false;
+      if (r.torre != scope.torre) return false;
+      if (r.fvsCodigo != scope.fvsCodigo) return false;
+      if (selectedSheetId.isNotEmpty &&
+          (r.operationalSheetId ?? '').trim() != selectedSheetId) {
+        return false;
+      }
+      if (r.deleted) return false;
+      return true;
+    }).toList();
+
+    final latestByUnit = <String, InspectionRecord>{};
+    for (final r in filtered) {
+      final key = _recordLocalRef(r);
+      final current = latestByUnit[key];
+      if (current == null || r.updatedAt.isAfter(current.updatedAt)) {
+        latestByUnit[key] = r;
+      }
+    }
+
+    if (latestByUnit.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Nenhuma inspeção encontrada para essa torre/FVS.'),
+        ),
+      );
+      return;
+    }
+
+    final units = latestByUnit.keys.toList()
+      ..sort((a, b) {
+        final an = int.tryParse(latestByUnit[a]!.apto.trim());
+        final bn = int.tryParse(latestByUnit[b]!.apto.trim());
+        if (an != null && bn != null) return an.compareTo(bn);
+        if (an != null) return -1;
+        if (bn != null) return 1;
+        return a.compareTo(b);
+      });
+
+    final selectedUnits = await _pickMultipleUnits(units, latestByUnit);
+    if (!mounted || selectedUnits == null || selectedUnits.isEmpty) return;
+
+    try {
+      setState(() => _isGeneratingReportPdf = true);
+      final records = selectedUnits
+          .map((u) => latestByUnit[u]!)
+          .toList(growable: false);
+      final result = await _pdfService.exportarRelatorioIndividualEmLote(
+        records,
+      );
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Relatório individual gerado (${records.length} unidade(s)).',
+          ),
+        ),
+      );
+
+      if (!result.downloadedInBrowser && result.filePath != null) {
+        try {
+          await Share.shareXFiles([
+            XFile(result.filePath!),
+          ], text: 'Relatório individual gerado no Obra Check');
+        } catch (_) {
+          await OpenFilex.open(result.filePath!);
+        }
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Falha ao gerar relatório: $e')));
+    } finally {
+      if (mounted) setState(() => _isGeneratingReportPdf = false);
+    }
+  }
+
+  Future<List<String>?> _pickMultipleUnits(
+    List<String> units,
+    Map<String, InspectionRecord> latestByUnit,
+  ) async {
+    final selected = <String>{};
+    return showModalBottomSheet<List<String>>(
+      context: context,
+      isScrollControlled: true,
+      builder: (context) {
+        String query = '';
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            final filtered = units.where((u) {
+              if (query.trim().isEmpty) return true;
+              final label = _localLabelFromRef(u);
+              final q = query.toLowerCase();
+              return label.toLowerCase().contains(q) ||
+                  u.toLowerCase().contains(q);
+            }).toList();
+            final allSelected =
+                filtered.isNotEmpty && filtered.every(selected.contains);
+
+            return SafeArea(
+              child: Padding(
+                padding: EdgeInsets.only(
+                  bottom: MediaQuery.of(context).viewInsets.bottom,
+                ),
+                child: SizedBox(
+                  height: MediaQuery.of(context).size.height * 0.75,
+                  child: Column(
+                    children: [
+                      ListTile(
+                        title: const Text(
+                          'Selecionar unidades',
+                          style: TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                        subtitle: Text(
+                          '${selected.length} selecionada(s) de ${units.length}',
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        child: TextField(
+                          decoration: const InputDecoration(
+                            prefixIcon: Icon(Icons.search),
+                            hintText: 'Buscar unidade',
+                          ),
+                          onChanged: (v) => setSheetState(() => query = v),
+                        ),
+                      ),
+                      CheckboxListTile(
+                        value: allSelected,
+                        title: Text(
+                          allSelected
+                              ? 'Desmarcar todos'
+                              : 'Selecionar todos',
+                        ),
+                        onChanged: (v) => setSheetState(() {
+                          if (v == true) {
+                            selected.addAll(filtered);
+                          } else {
+                            selected.removeAll(filtered);
+                          }
+                        }),
+                      ),
+                      const Divider(height: 1),
+                      Expanded(
+                        child: ListView(
+                          children: filtered.map((u) {
+                            final record = latestByUnit[u]!;
+                            final label = _localLabelFromRef(u);
+                            return CheckboxListTile(
+                              value: selected.contains(u),
+                              title: Text(label),
+                              subtitle: Text(
+                                reportInspectionStatusLabel(record),
+                              ),
+                              onChanged: (v) => setSheetState(() {
+                                if (v == true) {
+                                  selected.add(u);
+                                } else {
+                                  selected.remove(u);
+                                }
+                              }),
+                            );
+                          }).toList(growable: false),
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: SizedBox(
+                          width: double.infinity,
+                          child: FilledButton(
+                            onPressed: selected.isEmpty
+                                ? null
+                                : () =>
+                                      Navigator.pop(context, selected.toList()),
+                            child: Text('Gerar (${selected.length})'),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
   Future<_ReportPdfScope?> _pickPdfScope() async {
     final towers = _pdfScopeTowerOrder;
     final selectedTower = await _openSelectionSheet<String>(
@@ -1173,6 +1382,17 @@ class _ReportsScreenState extends State<ReportsScreen> {
                       ),
                     ),
                   ],
+                ),
+                const SizedBox(height: 8),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: _isGeneratingReportPdf
+                        ? null
+                        : () => _generateIndividualBatchReport(all),
+                    icon: const Icon(Icons.checklist_outlined),
+                    label: const Text('Individual (várias unidades)'),
+                  ),
                 ),
                 const SizedBox(height: 10),
                 Expanded(

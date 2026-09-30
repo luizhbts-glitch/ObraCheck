@@ -1454,13 +1454,15 @@ class _InspectionScreenState extends State<InspectionScreen> {
                           proof.requiresPhoto ||
                           proofType == InspectionItemResult.proofPhotoRequired;
 
+                      final leavingNok =
+                          current == ItemStatus.nok && s != ItemStatus.nok;
                       setState(() {
                         _status[i] = s;
                         if (s == ItemStatus.ok) {
                           _obs(i).text = '';
                         }
                         if (s != ItemStatus.nok) {
-                          if (!requiresPhotoForItem) {
+                          if (leavingNok && !requiresPhotoForItem) {
                             _photoPathsByItem[i] = [];
                           }
                           _ncCompanyIdByItem.remove(i);
@@ -1468,7 +1470,7 @@ class _InspectionScreenState extends State<InspectionScreen> {
                         }
                         _dirty = true;
                       });
-                      if (s != ItemStatus.nok &&
+                      if (leavingNok &&
                           !requiresPhotoForItem &&
                           oldPhotos.isNotEmpty) {
                         await _deletePhotoFiles(oldPhotos);
@@ -1848,7 +1850,7 @@ class _ItemCard extends StatelessWidget {
               ],
             ],
           ],
-          if (requiresPhoto && status != ItemStatus.nok) ...[
+          if (status != ItemStatus.nok) ...[
             const SizedBox(height: 10),
             Align(
               alignment: Alignment.centerLeft,
@@ -1857,7 +1859,11 @@ class _ItemCard extends StatelessWidget {
                     ? null
                     : () async => await onTakePhoto(),
                 icon: const Icon(Icons.photo_camera_outlined),
-                label: Text('Foto de evidência (${photoPaths.length}/5)'),
+                label: Text(
+                  requiresPhoto
+                      ? 'Foto de evidência (${photoPaths.length}/5)'
+                      : 'Foto de evidência - opcional (${photoPaths.length}/5)',
+                ),
               ),
             ),
             if (photoPaths.isNotEmpty) ...[
@@ -1868,7 +1874,7 @@ class _ItemCard extends StatelessWidget {
                     ? (_) async {}
                     : (photo) async => await onRemovePhoto(photo),
               ),
-            ] else
+            ] else if (requiresPhoto)
               Padding(
                 padding: const EdgeInsets.only(top: 6),
                 child: Text(
