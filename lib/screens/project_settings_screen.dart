@@ -1,10 +1,15 @@
 ﻿import 'package:flutter/material.dart';
+import 'package:hive/hive.dart';
 
 import '../data/fvs_catalog.dart';
+import '../models/inspection_record.dart';
 import '../models/project_settings_record.dart';
+import '../models/service_record.dart';
+import '../services/photo_service.dart';
 import '../services/project_context_service.dart';
 import '../services/project_settings_service.dart';
 import '../theme/app_colors.dart';
+import '../utils/project_scope.dart';
 import 'fvs_location_rules_settings_screen.dart';
 import 'photo_requirement_settings_screen.dart';
 
@@ -27,6 +32,7 @@ class _ProjectSettingsScreenState extends State<ProjectSettingsScreen> {
   bool _hasRooftop = true;
   bool _loading = true;
   bool _saving = false;
+  bool _apagandoInspecoes = false;
 
   List<String> _towers = <String>[];
   String _selectedTower = 'Paris';
@@ -628,6 +634,67 @@ class _ProjectSettingsScreenState extends State<ProjectSettingsScreen> {
     });
   }
 
+  /// Reseta só as personalizações de FVS desta obra (comprovação por foto
+  /// obrigatória, fichas operacionais, contexto por FVS) pro padrão do
+  /// app — NÃO mexe em torres/pavimentos/elementos estruturais nem nos
+  /// registros de inspeção já feitos. Renomeado em 2026-09-30: "padrão de
+  /// fábrica" virou o nome do botão de apagar inspeções (veja
+  /// `_apagarInspecoesDaObra`), então esse aqui ficou só "ajustes de FVS".
+  Future<void> _restoreFvsDefaults() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Restaurar ajustes de FVS?'),
+        content: const Text(
+          'Remove os ajustes desta obra pra FVS — comprovação por foto '
+          'obrigatória, fichas operacionais e contexto por FVS — e volta pro '
+          'padrão original do app. Não mexe em torres, pavimentos, elementos '
+          'estruturais nem nos registros de inspeção já feitos (isso é só '
+          'configuração). Salva na hora, não dá pra desfazer.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton.tonal(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Restaurar'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    final defaults = _settingsService.buildLegacyDefault(
+      projectId: _projectContext.currentProjectIdSync,
+    );
+
+    setState(() {
+      _fvsContextOverrides = Map<String, dynamic>.from(
+        defaults.fvsContextOverrides,
+      );
+      _fvsContexts = defaults.fvsContextOverrides.entries
+          .where((e) => e.value is String)
+          .map(
+            (e) => _FvsContextDraft(
+              fvsCode: e.key,
+              contextId: (e.value as String).trim(),
+            ),
+          )
+          .where(
+            (e) => e.fvsCode.trim().isNotEmpty && e.contextId.trim().isNotEmpty,
+          )
+          .toList(growable: true);
+      _operationalSheets = defaults.operationalSheets
+          .map(_OperationalSheetDraft.fromRecord)
+          .toList(growable: true);
+      _fvsProofPhotoOverrides = Map.from(defaults.fvsProofPhotoOverrides);
+    });
+
+    await _save();
+  }
+
   Future<void> _resetCurrentConfig() async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -663,6 +730,177 @@ class _ProjectSettingsScreenState extends State<ProjectSettingsScreen> {
         content: Text('Configuracao salva removida. Fallback legado ativo.'),
       ),
     );
+  }
+
+  /// "Limpar FVS (padrão de fábrica)" — pedido do usuário em 2026-09-30,
+  /// depois de uma correção explícita: isso NÃO é reset de configuração
+  /// (aquilo é `_restoreFvsDefaults`), é apagar de verdade tudo que já foi
+  /// medido nessa obra — inspeções, marcações, NC (derivado do status dos
+  /// itens, sem coleção própria) e fotos — pra "começar do zero" sem criar
+  /// outra obra. Também reseta o status dos serviços pra `em_andamento`
+  /// (confirmado com o usuário: "Sim, reseta também"), já que eles ficam
+  /// sem sentido descolados das inspeções que motivaram o status. Não
+  /// toca em torres/pavimentos/elementos estruturais nem em outras obras.
+  /// Usa o mesmo padrão de tombstone (`deleted/pendingSync/deletedAt`) do
+  /// resto do app — nunca hard-delete — pra sync poder propagar.
+  Future<void> _apagarInspecoesDaObra() async {
+    final projectId = _projectContext.currentProjectIdSync.trim();
+    if (projectId.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Selecione uma obra ativa.')),
+      );
+      return;
+    }
+
+    final firstConfirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Apagar todas as inspeções desta obra?'),
+        content: const Text(
+          'Isso apaga permanentemente TODAS as inspeções já feitas nesta '
+          'obra: marcações, não conformidades e fotos. Os serviços voltam '
+          'pro status "em andamento". Torres, pavimentos, elementos '
+          'estruturais e outras obras não são afetados. Essa ação não '
+          'pode ser desfeita.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton.tonal(
+            style: FilledButton.styleFrom(
+              foregroundColor: Colors.white,
+              backgroundColor: Colors.redAccent,
+            ),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Continuar'),
+          ),
+        ],
+      ),
+    );
+    if (firstConfirm != true) return;
+    if (!mounted) return;
+
+    final typedController = TextEditingController();
+    final finalConfirm = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setLocal) {
+            final canConfirm = typedController.text.trim() == 'APAGAR';
+            return AlertDialog(
+              title: const Text('Confirmação final'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Digite APAGAR para confirmar a exclusão.'),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: typedController,
+                    autofocus: true,
+                    textCapitalization: TextCapitalization.characters,
+                    decoration: const InputDecoration(
+                      border: OutlineInputBorder(),
+                      hintText: 'APAGAR',
+                    ),
+                    onChanged: (_) => setLocal(() {}),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  child: const Text('Cancelar'),
+                ),
+                FilledButton(
+                  style: FilledButton.styleFrom(
+                    backgroundColor: Colors.redAccent,
+                  ),
+                  onPressed: canConfirm
+                      ? () => Navigator.pop(context, true)
+                      : null,
+                  child: const Text('Apagar tudo'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+    typedController.dispose();
+    if (finalConfirm != true) return;
+    if (!mounted) return;
+
+    setState(() => _apagandoInspecoes = true);
+    try {
+      final inspectionsBox = Hive.box<InspectionRecord>('inspections');
+      final inspections = filterRecordsByProjectScope(
+        inspectionsBox.values.where((r) => !r.deleted),
+        currentProjectId: projectId,
+        projectId: (r) => r.projectId,
+        obra: (r) => r.obra,
+      ).toList();
+
+      final prefsBox = Hive.box('prefs');
+      final now = DateTime.now();
+
+      for (final record in inspections) {
+        for (final item in record.itens) {
+          for (final photo in item.photos) {
+            try {
+              if (photo.storagePath.isNotEmpty) {
+                await PhotoService.instance.deletePhoto(photo.storagePath);
+              }
+              await PhotoService.instance.deleteLocalPhotoIfExists(
+                photo.localPath,
+              );
+            } catch (_) {
+              // Best-effort: continua apagando o resto mesmo se uma foto falhar.
+            }
+          }
+        }
+
+        final tombstone = record.copyWith(
+          deleted: true,
+          pendingSync: true,
+          deletedAt: now,
+          updatedAt: now,
+        );
+        await inspectionsBox.put(tombstone.id, tombstone);
+        await prefsBox.put('inspection_synced_${tombstone.id}', false);
+      }
+
+      final servicesBox = Hive.box<ServiceRecord>('services');
+      final services = filterRecordsByProjectScope(
+        servicesBox.values.where((s) => !s.deleted),
+        currentProjectId: projectId,
+        projectId: (s) => s.projectId,
+        obra: (s) => s.obra,
+      ).where((s) => s.status != 'em_andamento').toList();
+
+      for (final service in services) {
+        final atualizado = service.copyWith(
+          status: 'em_andamento',
+          pendingSync: true,
+          updatedAt: now,
+        );
+        await servicesBox.put(atualizado.id, atualizado);
+      }
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '${inspections.length} inspeção(ões) apagada(s) e '
+            '${services.length} serviço(s) resetado(s).',
+          ),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _apagandoInspecoes = false);
+    }
   }
 
   int _totalSpecialAreas() {
@@ -1445,6 +1683,9 @@ class _ProjectSettingsScreenState extends State<ProjectSettingsScreen> {
                 onSave: _save,
                 onRestoreLegacy: _restoreLegacy,
                 onResetCurrentConfig: _resetCurrentConfig,
+                onRestoreFvsDefaults: _restoreFvsDefaults,
+                apagandoInspecoes: _apagandoInspecoes,
+                onApagarInspecoes: _apagarInspecoesDaObra,
               ),
             ],
           ),
@@ -1484,12 +1725,18 @@ class _ActionsCard extends StatelessWidget {
     required this.onSave,
     required this.onRestoreLegacy,
     required this.onResetCurrentConfig,
+    required this.onRestoreFvsDefaults,
+    required this.apagandoInspecoes,
+    required this.onApagarInspecoes,
   });
 
   final bool saving;
   final VoidCallback onSave;
+  final VoidCallback onRestoreFvsDefaults;
   final VoidCallback onRestoreLegacy;
   final VoidCallback onResetCurrentConfig;
+  final bool apagandoInspecoes;
+  final VoidCallback onApagarInspecoes;
 
   @override
   Widget build(BuildContext context) {
@@ -1531,12 +1778,61 @@ class _ActionsCard extends StatelessWidget {
             SizedBox(
               width: double.infinity,
               child: OutlinedButton.icon(
+                onPressed: onRestoreFvsDefaults,
+                icon: const Icon(Icons.cleaning_services_outlined),
+                label: const Text('Restaurar ajustes de FVS'),
+              ),
+            ),
+            const SizedBox(height: 8),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
                 onPressed: onResetCurrentConfig,
                 style: OutlinedButton.styleFrom(
                   foregroundColor: Colors.redAccent,
                 ),
                 icon: const Icon(Icons.delete_sweep_outlined),
                 label: const Text('Resetar configuracao salva da obra'),
+              ),
+            ),
+            const SizedBox(height: 16),
+            const Divider(),
+            const SizedBox(height: 4),
+            Text(
+              'Zona de risco',
+              style: TextStyle(
+                fontWeight: FontWeight.w800,
+                color: Colors.redAccent.shade700,
+              ),
+            ),
+            const SizedBox(height: 4),
+            const Text(
+              'Apaga dados já registrados desta obra. Não pode ser desfeito.',
+              style: TextStyle(fontSize: 12),
+            ),
+            const SizedBox(height: 8),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: apagandoInspecoes ? null : onApagarInspecoes,
+                style: FilledButton.styleFrom(
+                  backgroundColor: Colors.redAccent,
+                ),
+                icon: apagandoInspecoes
+                    ? const SizedBox(
+                        width: 14,
+                        height: 14,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : const Icon(Icons.delete_forever_outlined),
+                label: Text(
+                  apagandoInspecoes
+                      ? 'Apagando...'
+                      : 'Limpar FVS (padrão de fábrica)',
+                ),
               ),
             ),
           ],
