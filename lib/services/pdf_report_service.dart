@@ -345,13 +345,10 @@ class PdfReportService {
             _buildResumoCountsSection(payload),
           ];
 
-          final atencao = payload.items.where((i) {
-            final st = _normalizeStatus(i.status);
-            return st == 'nok' || st == 'okafterfix';
-          }).toList();
-          if (atencao.isNotEmpty) {
+          if (payload.items.isNotEmpty) {
             content.add(pw.SizedBox(height: 10));
-            content.add(_buildAtencaoItemsSection(atencao));
+            content.add(_buildSectionTitle('ITENS VERIFICADOS'));
+            content.add(_buildItemsStatusTable(payload.items));
           }
 
           if (payload.photos.isNotEmpty) {
@@ -427,10 +424,14 @@ class PdfReportService {
     );
   }
 
-  pw.Widget _buildAtencaoItemsSection(List<InspectionItemResult> items) {
+  /// Lista TODOS os itens do checklist (não só os com problema) — pedido do
+  /// usuário em 2026-10-01 depois de ver a primeira versão só com o resumo:
+  /// "está só o resumo, quero os itens". Mantém a contagem geral como
+  /// resumo no topo, mas essa tabela é o corpo principal da página.
+  pw.Widget _buildItemsStatusTable(List<InspectionItemResult> items) {
     final rows = <pw.TableRow>[
       pw.TableRow(
-        decoration: pw.BoxDecoration(color: _hex(0xFFFEF2F2)),
+        decoration: pw.BoxDecoration(color: _hex(0xFFE8E8E8)),
         children: [
           _ncHeaderCell('N°', align: pw.TextAlign.center),
           _ncHeaderCell('ITEM / DESCRIÇÃO', align: pw.TextAlign.left),
@@ -441,7 +442,26 @@ class PdfReportService {
     ];
     for (var i = 0; i < items.length; i++) {
       final item = items[i];
-      final isNok = _normalizeStatus(item.status) == 'nok';
+      final status = _normalizeStatus(item.status);
+      final String symbol;
+      final PdfColor color;
+      switch (status) {
+        case 'ok':
+          symbol = 'O';
+          color = _hex(0xFF166534);
+          break;
+        case 'nok':
+          symbol = 'X';
+          color = _hex(0xFF991B1B);
+          break;
+        case 'okafterfix':
+          symbol = 'XO';
+          color = _hex(0xFF92400E);
+          break;
+        default:
+          symbol = '-';
+          color = _hex(0xFF555555);
+      }
       rows.add(
         pw.TableRow(
           children: [
@@ -458,10 +478,10 @@ class PdfReportService {
               color: _hex(0xFF1A1A1A),
             ),
             _tableCell(
-              isNok ? 'X' : 'XO',
+              symbol,
               align: pw.TextAlign.center,
               fontSize: 8,
-              color: isNok ? _hex(0xFF991B1B) : _hex(0xFF92400E),
+              color: color,
             ),
             _tableCell(
               item.obs,
@@ -475,41 +495,20 @@ class PdfReportService {
     }
     return pw.Container(
       decoration: pw.BoxDecoration(
-        border: pw.Border.all(color: _hex(0xFF991B1B), width: 1),
+        border: pw.Border.all(color: _hex(0xFF1A1A1A), width: 1),
       ),
-      child: pw.Column(
-        children: [
-          pw.Container(
-            width: double.infinity,
-            color: _hex(0xFF991B1B),
-            padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-            child: pw.Text(
-              'ITENS QUE PRECISAM DE ATENÇÃO',
-              style: pw.TextStyle(
-                font: pw.Font.helveticaBold(),
-                fontSize: 7.5,
-                color: PdfColors.white,
-                letterSpacing: 0.8,
-              ),
-            ),
-          ),
-          pw.Table(
-            border: pw.TableBorder(
-              horizontalInside: pw.BorderSide(
-                color: _hex(0xFFFDE8E8),
-                width: 1,
-              ),
-              verticalInside: pw.BorderSide(color: _hex(0xFFFDE8E8), width: 1),
-            ),
-            columnWidths: {
-              0: const pw.FlexColumnWidth(0.4),
-              1: const pw.FlexColumnWidth(3),
-              2: const pw.FlexColumnWidth(0.8),
-              3: const pw.FlexColumnWidth(3),
-            },
-            children: rows,
-          ),
-        ],
+      child: pw.Table(
+        border: pw.TableBorder(
+          horizontalInside: pw.BorderSide(color: _hex(0xFFDDDDDD), width: 1),
+          verticalInside: pw.BorderSide(color: _hex(0xFFDDDDDD), width: 1),
+        ),
+        columnWidths: {
+          0: const pw.FlexColumnWidth(0.4),
+          1: const pw.FlexColumnWidth(3),
+          2: const pw.FlexColumnWidth(0.8),
+          3: const pw.FlexColumnWidth(3),
+        },
+        children: rows,
       ),
     );
   }
@@ -865,7 +864,7 @@ class PdfReportService {
           _buildConsolidatedMetaCell('TORRE', payload.tower),
           _buildConsolidatedMetaCell(
             'FVS',
-            '${payload.fvsCode} – ${payload.fvsName}',
+            '${payload.fvsCode} - ${payload.fvsName}',
           ),
           _buildConsolidatedMetaCell(
             'DATA',
@@ -1401,7 +1400,7 @@ class PdfReportService {
           _metaCellV2('OBRA', payload.obraNome),
           _metaCellV2('TORRE', payload.tower),
           _metaCellV2('LOCAL / APTO', payload.location),
-          _metaCellV2('FVS', '${payload.fvsCode} – ${payload.fvsName}'),
+          _metaCellV2('FVS', '${payload.fvsCode} - ${payload.fvsName}'),
           _metaCellV2('STATUS', payload.statusLabel),
           _metaCellV2('DATA', _formatDateOnly(payload.inspectionDate)),
           _metaCellV2('RESPONSÁVEL', payload.inspectorName, isLast: true),
@@ -1733,7 +1732,7 @@ class PdfReportService {
     return pw.Padding(
       padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 4),
       child: pw.Text(
-        normalized.isEmpty ? (fallbackDash ? '—' : '') : normalized,
+        normalized.isEmpty ? (fallbackDash ? '-' : '') : normalized,
         textAlign: align,
         style: pw.TextStyle(
           font: pw.Font.helvetica(),
@@ -2224,7 +2223,7 @@ class PdfReportService {
   String _truncate(String value, int maxChars) {
     final text = value.trim();
     if (text.length <= maxChars) return text;
-    return '${text.substring(0, maxChars - 1)}…';
+    return '${text.substring(0, maxChars - 2)}...';
   }
 
   Future<File> generateMatrixByTorreFvs({
