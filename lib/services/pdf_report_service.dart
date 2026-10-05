@@ -10,8 +10,11 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:share_plus/share_plus.dart';
 
 import '../models/inspection_record.dart';
+import '../models/medicao_campo_record.dart';
+import '../utils/medicao_campo_rules.dart';
 import '../utils/report_inspection_rules.dart';
 import 'matrix_report_builder.dart';
+import 'medicao_foto_service.dart';
 import 'pdf_download_helper.dart';
 
 class PdfExportResult {
@@ -320,6 +323,417 @@ class PdfReportService {
       ], text: 'Relatório individual de inspeção — ${records.length} unidade(s)');
     } catch (_) {}
     return PdfExportResult(fileName: fileName, filePath: file.path);
+  }
+
+  /// Medição de campo — PDF de comprovação dos apartamentos pagos numa
+  /// medição: capa com resumo, tabela por apartamento e uma seção por
+  /// apartamento com as fotos (2 por linha) e a legenda de identificação.
+  /// Só entram os apartamentos da própria medição.
+  Future<PdfExportResult> exportarMedicaoCampo(MedicaoCampoRecord record) async {
+    final fotos = <String, List<Uint8List?>>{};
+    for (final apto in record.aptos) {
+      final lista = <Uint8List?>[];
+      for (final foto in apto.fotos) {
+        lista.add(await MedicaoFotoService.instance.lerBytesParaPdf(foto));
+      }
+      fotos[apto.chave] = lista;
+    }
+    final bytes = await gerarMedicaoCampoBytes(
+      record: record,
+      fotosPorApto: fotos,
+      geradoEm: DateTime.now(),
+    );
+
+    final dt = DateTime.now();
+    final stamp =
+        '${dt.year.toString().padLeft(4, '0')}${dt.month.toString().padLeft(2, '0')}${dt.day.toString().padLeft(2, '0')}_${dt.hour.toString().padLeft(2, '0')}${dt.minute.toString().padLeft(2, '0')}';
+    final fileName = _sanitize(
+      'Medicao_${record.obra}_${record.servicoNome}_${record.empreiteiroNome}_$stamp.pdf',
+    );
+
+    if (kIsWeb) {
+      downloadPdfBytes(bytes: bytes, fileName: fileName);
+      return PdfExportResult(fileName: fileName, downloadedInBrowser: true);
+    }
+
+    final file = await _savePdfToDocuments(bytes: bytes, fileName: fileName);
+    try {
+      await Share.shareXFiles([
+        XFile(file.path),
+      ], text: 'Medição ${record.servicoNome} - ${record.empreiteiroNome}');
+    } catch (_) {}
+    return PdfExportResult(fileName: fileName, filePath: file.path);
+  }
+
+  /// Monta o PDF a partir dos dados já carregados (sem tocar em Hive nem em
+  /// arquivos) — separado do `exportarMedicaoCampo` pra poder ser testado.
+  /// [fotosPorApto] usa `MedicaoCampoApto.chave` e a mesma ordem de `fotos`.
+  Future<Uint8List> gerarMedicaoCampoBytes({
+    required MedicaoCampoRecord record,
+    required Map<String, List<Uint8List?>> fotosPorApto,
+    required DateTime geradoEm,
+  }) async {
+    final pdf = pw.Document();
+    final aptos = List<MedicaoCampoApto>.from(record.aptos)
+      ..sort(compararAptosMedicao);
+    final resumo = resumirMedicao(aptos);
+    final responsavel = record.responsavelNome.trim().isEmpty
+        ? '-'
+        : record.responsavelNome.trim();
+
+    pdf.addPage(
+      pw.MultiPage(
+        pageFormat: PdfPageFormat.a4,
+        margin: const pw.EdgeInsets.fromLTRB(32, 28, 32, 32),
+        header: (ctx) => _medicaoHeader(record),
+        footer: (ctx) => _medicaoFooter(ctx, record),
+        build: (ctx) {
+          final content = <pw.Widget>[
+            pw.SizedBox(height: 10),
+            _medicaoCapa(record, resumo, responsavel, geradoEm),
+            pw.SizedBox(height: 12),
+            _buildSectionTitle('RESUMO POR APARTAMENTO'),
+            _medicaoTabelaResumo(aptos),
+          ];
+
+          for (final apto in aptos) {
+            final fotos = fotosPorApto[apto.chave] ?? const <Uint8List?>[];
+            final temFotos = apto.fotos.isNotEmpty;
+            if (temFotos) {
+              content.add(pw.NewPage());
+            } else {
+              content.add(pw.SizedBox(height: 14));
+            }
+            content.add(_medicaoAptoTitulo(apto));
+            if (apto.observacao.trim().isNotEmpty) {
+              content.add(pw.SizedBox(height: 4));
+              content.add(
+                pw.Text(
+                  'Observação: ${apto.observacao.trim()}',
+                  style: pw.TextStyle(
+                    font: pw.Font.helvetica(),
+                    fontSize: 9,
+                    color: _hex(0xFF1A1A1A),
+                  ),
+                ),
+              );
+            }
+            if (!temFotos) {
+              content.add(pw.SizedBox(height: 4));
+              content.add(
+                pw.Text(
+                  'Sem fotos registradas.',
+                  style: pw.TextStyle(
+                    font: pw.Font.helvetica(),
+                    fontSize: 8.5,
+                    color: _hex(0xFF777777),
+                  ),
+                ),
+              );
+              continue;
+            }
+            content.add(pw.SizedBox(height: 8));
+            for (var i = 0; i < apto.fotos.length; i += 2) {
+              content.add(
+                pw.Padding(
+                  padding: const pw.EdgeInsets.only(bottom: 10),
+                  child: pw.Row(
+                    crossAxisAlignment: pw.CrossAxisAlignment.start,
+                    children: [
+                      pw.Expanded(
+                        child: _medicaoFotoCelula(
+                          apto.fotos[i],
+                          i < fotos.length ? fotos[i] : null,
+                        ),
+                      ),
+                      pw.SizedBox(width: 10),
+                      pw.Expanded(
+                        child: i + 1 < apto.fotos.length
+                            ? _medicaoFotoCelula(
+                                apto.fotos[i + 1],
+                                i + 1 < fotos.length ? fotos[i + 1] : null,
+                              )
+                            : pw.SizedBox(),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            }
+          }
+          return content;
+        },
+      ),
+    );
+    return pdf.save();
+  }
+
+  pw.Widget _medicaoHeader(MedicaoCampoRecord record) {
+    return pw.Column(
+      children: [
+        pw.Row(
+          mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+          children: [
+            pw.Text(
+              'Medição de Serviço',
+              style: pw.TextStyle(
+                font: pw.Font.helveticaBold(),
+                fontSize: 13,
+                color: _hex(0xFF1A1A1A),
+              ),
+            ),
+            pw.Text(
+              record.obra,
+              style: pw.TextStyle(
+                font: pw.Font.helvetica(),
+                fontSize: 8,
+                color: _hex(0xFF777777),
+              ),
+            ),
+          ],
+        ),
+        pw.SizedBox(height: 3),
+        pw.Container(height: 2, color: _hex(0xFF1A1A1A)),
+      ],
+    );
+  }
+
+  pw.Widget _medicaoFooter(pw.Context ctx, MedicaoCampoRecord record) {
+    pw.Widget linha(String label) => pw.Expanded(
+      child: pw.Column(
+        children: [
+          pw.Container(height: 0.7, color: _hex(0xFF1A1A1A)),
+          pw.SizedBox(height: 2),
+          pw.Text(
+            label,
+            style: pw.TextStyle(
+              font: pw.Font.helvetica(),
+              fontSize: 7,
+              color: _hex(0xFF555555),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    return pw.Column(
+      children: [
+        pw.SizedBox(height: 14),
+        pw.Row(
+          children: [
+            linha('Responsável pela medição'),
+            pw.SizedBox(width: 24),
+            linha('Empreiteiro / Conferente'),
+          ],
+        ),
+        pw.SizedBox(height: 5),
+        pw.Row(
+          mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+          children: [
+            pw.Text(
+              '${record.servicoNome} | ${record.empreiteiroNome}',
+              style: pw.TextStyle(
+                font: pw.Font.helvetica(),
+                fontSize: 7,
+                color: _hex(0xFF999999),
+              ),
+            ),
+            pw.Text(
+              'Página ${ctx.pageNumber} de ${ctx.pagesCount}',
+              style: pw.TextStyle(
+                font: pw.Font.helvetica(),
+                fontSize: 7,
+                color: _hex(0xFF999999),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  pw.Widget _medicaoCapa(
+    MedicaoCampoRecord record,
+    MedicaoResumo resumo,
+    String responsavel,
+    DateTime geradoEm,
+  ) {
+    final periodo = record.periodo.trim().isEmpty ? '-' : record.periodo.trim();
+    final pasta = '${nomeMes(record.mes)}/${record.ano}';
+    pw.Widget campo(String label, String valor) => pw.Padding(
+      padding: const pw.EdgeInsets.only(bottom: 5),
+      child: pw.Row(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          pw.SizedBox(
+            width: 95,
+            child: pw.Text(
+              label,
+              style: pw.TextStyle(
+                font: pw.Font.helvetica(),
+                fontSize: 8,
+                color: _hex(0xFF777777),
+              ),
+            ),
+          ),
+          pw.Expanded(
+            child: pw.Text(
+              valor,
+              style: pw.TextStyle(
+                font: pw.Font.helveticaBold(),
+                fontSize: 10,
+                color: _hex(0xFF1A1A1A),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    return pw.Container(
+      padding: const pw.EdgeInsets.all(10),
+      decoration: pw.BoxDecoration(
+        border: pw.Border.all(color: _hex(0xFF1A1A1A), width: 1),
+      ),
+      child: pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          campo('OBRA', record.obra),
+          campo('SERVIÇO', '${record.servicoCodigo} - ${record.servicoNome}'),
+          campo('EMPREITEIRO', record.empreiteiroNome),
+          campo('MEDIÇÃO / PERÍODO', periodo),
+          campo('PASTA', pasta),
+          campo('GERADO EM', _formatDate(geradoEm)),
+          campo('RESPONSÁVEL', responsavel),
+          pw.SizedBox(height: 6),
+          pw.Row(
+            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+            children: [
+              _resumoPill('Apartamentos', '${resumo.totalAptos}', _hex(0xFF1A1A1A)),
+              _resumoPill('Conferidos', '${resumo.conferidos}', _hex(0xFF166534)),
+              _resumoPill('Pendentes', '${resumo.pendentes}', _hex(0xFF92400E)),
+              _resumoPill('Com problema', '${resumo.comProblema}', _hex(0xFF991B1B)),
+              _resumoPill('Fotos', '${resumo.totalFotos}', _hex(0xFF1A1A1A)),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  pw.Widget _medicaoTabelaResumo(List<MedicaoCampoApto> aptos) {
+    PdfColor corStatus(String s) {
+      switch (MedicaoStatus.normalize(s)) {
+        case MedicaoStatus.conferido:
+          return _hex(0xFF166534);
+        case MedicaoStatus.problema:
+          return _hex(0xFF991B1B);
+        default:
+          return _hex(0xFF92400E);
+      }
+    }
+
+    final rows = <pw.TableRow>[
+      pw.TableRow(
+        decoration: pw.BoxDecoration(color: _hex(0xFFE8E8E8)),
+        children: [
+          _ncHeaderCell('TORRE', align: pw.TextAlign.left),
+          _ncHeaderCell('APTO', align: pw.TextAlign.center),
+          _ncHeaderCell('STATUS', align: pw.TextAlign.left),
+          _ncHeaderCell('OBSERVAÇÃO', align: pw.TextAlign.left),
+          _ncHeaderCell('FOTOS', align: pw.TextAlign.center),
+        ],
+      ),
+      for (final a in aptos)
+        pw.TableRow(
+          children: [
+            _tableCell(a.torre, align: pw.TextAlign.left, fontSize: 8, color: _hex(0xFF1A1A1A)),
+            _tableCell(a.label, align: pw.TextAlign.center, fontSize: 8, color: _hex(0xFF1A1A1A)),
+            _tableCell(
+              MedicaoStatus.label(a.status),
+              align: pw.TextAlign.left,
+              fontSize: 8,
+              color: corStatus(a.status),
+            ),
+            _tableCell(a.observacao, align: pw.TextAlign.left, fontSize: 8, color: _hex(0xFF1A1A1A)),
+            _tableCell('${a.fotos.length}', align: pw.TextAlign.center, fontSize: 8, color: _hex(0xFF1A1A1A)),
+          ],
+        ),
+    ];
+
+    return pw.Container(
+      decoration: pw.BoxDecoration(
+        border: pw.Border.all(color: _hex(0xFF1A1A1A), width: 1),
+      ),
+      child: pw.Table(
+        border: pw.TableBorder(
+          horizontalInside: pw.BorderSide(color: _hex(0xFFDDDDDD), width: 1),
+          verticalInside: pw.BorderSide(color: _hex(0xFFDDDDDD), width: 1),
+        ),
+        columnWidths: {
+          0: const pw.FlexColumnWidth(1.2),
+          1: const pw.FlexColumnWidth(0.8),
+          2: const pw.FlexColumnWidth(1.4),
+          3: const pw.FlexColumnWidth(3.5),
+          4: const pw.FlexColumnWidth(0.7),
+        },
+        children: rows,
+      ),
+    );
+  }
+
+  pw.Widget _medicaoAptoTitulo(MedicaoCampoApto apto) {
+    return pw.Container(
+      width: double.infinity,
+      padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+      color: _hex(0xFFE8E8E8),
+      child: pw.Text(
+        'APTO ${apto.label} | ${apto.torre} | ${MedicaoStatus.label(apto.status)}',
+        style: pw.TextStyle(
+          font: pw.Font.helveticaBold(),
+          fontSize: 9,
+          color: _hex(0xFF1A1A1A),
+        ),
+      ),
+    );
+  }
+
+  pw.Widget _medicaoFotoCelula(MedicaoCampoFoto foto, Uint8List? bytes) {
+    final pw.Widget conteudo;
+    if (bytes == null || bytes.isEmpty) {
+      conteudo = pw.Text(
+        'Foto indisponível neste aparelho',
+        style: pw.TextStyle(
+          font: pw.Font.helvetica(),
+          fontSize: 8,
+          color: _hex(0xFF999999),
+        ),
+      );
+    } else {
+      conteudo = pw.Image(pw.MemoryImage(bytes), fit: pw.BoxFit.contain);
+    }
+    return pw.Column(
+      crossAxisAlignment: pw.CrossAxisAlignment.start,
+      children: [
+        pw.Container(
+          height: 170,
+          alignment: pw.Alignment.center,
+          decoration: pw.BoxDecoration(
+            border: pw.Border.all(color: _hex(0xFFCCCCCC), width: 0.5),
+          ),
+          child: conteudo,
+        ),
+        pw.SizedBox(height: 3),
+        pw.Text(
+          foto.legenda,
+          style: pw.TextStyle(
+            font: pw.Font.helvetica(),
+            fontSize: 6.5,
+            color: _hex(0xFF444444),
+          ),
+        ),
+      ],
+    );
   }
 
   void _addResumoMedicaoPage(pw.Document pdf, _FvsPdfPayload payload) {

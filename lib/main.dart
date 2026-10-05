@@ -16,6 +16,7 @@ import 'screens/ficha_fvs_mode_screen.dart';
 import 'screens/visual_tower_map_screen.dart';
 import 'screens/empreiteiros_screen.dart';
 import 'screens/almoxarifado_hub_screen.dart';
+import 'screens/medicao_campo_screen.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'models/cargo_record.dart';
 import 'models/centro_custo_record.dart';
@@ -30,6 +31,7 @@ import 'models/equipamento_estoque_record.dart';
 import 'models/fornecedor_record.dart';
 import 'models/inspection_record.dart';
 import 'models/insumo_obra_record.dart';
+import 'models/medicao_campo_record.dart';
 import 'models/material_catalogo_record.dart';
 import 'models/medicao_empreiteiro_record.dart';
 import 'models/orcamento_servico_record.dart';
@@ -149,6 +151,7 @@ Future<void> _openLazyBoxes() async {
   await HiveBoxHelper.openBoxSafe<InsumoObraRecord>('insumos_obra');
   await HiveBoxHelper.openBoxSafe<InsumoMovimentoRecord>('insumos_obra_movimentos');
   await HiveBoxHelper.openBoxSafe<InsumoConferenciaRecord>('insumos_obra_conferencias');
+  await HiveBoxHelper.openBoxSafe<MedicaoCampoRecord>('medicoes_campo');
   await HiveBoxHelper.openBoxRawSafe('project_settings');
   await HiveBoxHelper.openBoxRawSafe('equipments');
   await HiveBoxHelper.openBoxRawSafe('equipment_movements');
@@ -216,6 +219,9 @@ void _registerHiveAdapters() {
   _safeRegisterAdapter(() => Hive.registerAdapter(InsumoObraRecordAdapter()));
   _safeRegisterAdapter(() => Hive.registerAdapter(InsumoMovimentoRecordAdapter()));
   _safeRegisterAdapter(() => Hive.registerAdapter(InsumoConferenciaRecordAdapter()));
+  _safeRegisterAdapter(() => Hive.registerAdapter(MedicaoCampoRecordAdapter()));
+  _safeRegisterAdapter(() => Hive.registerAdapter(MedicaoCampoAptoAdapter()));
+  _safeRegisterAdapter(() => Hive.registerAdapter(MedicaoCampoFotoAdapter()));
 }
 
 void _safeRegisterAdapter(void Function() register) {
@@ -1270,6 +1276,11 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     _refreshDashboardClock();
   }
 
+  Future<void> _openMedicaoCampo() async {
+    await _openSection(context, (_) => const MedicaoCampoScreen());
+    _refreshDashboardClock();
+  }
+
   Future<void> _openCompras() async {
     await _openSection(context, (_) => const ComprasHomeScreen());
   }
@@ -1840,6 +1851,21 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                               ),
                               const SizedBox(height: 10),
 
+                              _ActionButton(
+                                label: 'Medição',
+                                icon: Icons.fact_check_outlined,
+                                onTap: () async {
+                                  await Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) => const MedicaoCampoScreen(),
+                                    ),
+                                  );
+                                  _refreshDashboardClock();
+                                },
+                              ),
+                              const SizedBox(height: 10),
+
                               if (hasProject &&
                                   (_projectContext.currentProject?.orgId ?? '')
                                       .isNotEmpty) ...[
@@ -1945,6 +1971,11 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                   icon: Icons.inventory_2_outlined,
                   label: 'Almoxarife',
                   onTap: _openAlmoxarife,
+                ),
+                SidebarAction(
+                  icon: Icons.fact_check_outlined,
+                  label: 'Medição',
+                  onTap: _openMedicaoCampo,
                 ),
                 if (hasProject &&
                     (_projectContext.currentProject?.orgId ?? '').isNotEmpty) ...[

@@ -1,0 +1,222 @@
+import 'package:flutter_test/flutter_test.dart';
+import 'package:obra_check/models/medicao_campo_record.dart';
+import 'package:obra_check/utils/medicao_campo_rules.dart';
+
+MedicaoCampoApto _apto(String label, {String status = MedicaoStatus.pendente, int fotos = 0}) {
+  return MedicaoCampoApto(
+    torre: 'Paris',
+    localRef: 'APTO_$label',
+    label: label,
+    andar: int.parse(label.substring(0, label.length - 2)),
+    status: status,
+    fotos: List.generate(
+      fotos,
+      (i) => MedicaoCampoFoto(id: 'f$i', capturedAt: DateTime(2026, 10, 5)),
+    ),
+  );
+}
+
+void main() {
+  group('legenda da foto', () {
+    test('traz obra, torre, apto, serviço, empreiteiro, data/hora e usuário', () {
+      final linhas = buildMedicaoFotoLegendaLinhas(
+        obra: 'Arsen Sabiá',
+        torre: 'Paris',
+        apto: '1101',
+        servico: 'Piso cerâmico',
+        empreiteiro: 'Silva Pisos',
+        dataHora: DateTime(2026, 10, 5, 9, 7),
+        usuario: 'Luiz',
+      );
+      final texto = linhas.join('\n');
+      expect(texto, contains('Arsen Sabiá'));
+      expect(texto, contains('Paris'));
+      expect(texto, contains('1101'));
+      expect(texto, contains('Piso cerâmico'));
+      expect(texto, contains('Silva Pisos'));
+      expect(texto, contains('05/10/2026 09:07'));
+      expect(texto, contains('Luiz'));
+    });
+
+    test('campo vazio vira hífen, nunca some', () {
+      final texto = buildMedicaoFotoLegenda(
+        obra: '',
+        torre: 'Paris',
+        apto: '1101',
+        servico: 'Piso',
+        empreiteiro: '  ',
+        dataHora: DateTime(2026, 1, 2, 3, 4),
+        usuario: '',
+      );
+      expect(texto, contains('Obra: -'));
+      expect(texto, contains('Empreiteiro: -'));
+      expect(texto, contains('Usuário: -'));
+    });
+  });
+
+  group('resumirMedicao', () {
+    test('conta status e fotos', () {
+      final r = resumirMedicao([
+        _apto('1101', status: MedicaoStatus.conferido, fotos: 2),
+        _apto('1102', status: MedicaoStatus.conferido, fotos: 1),
+        _apto('1103'),
+        _apto('1104', status: MedicaoStatus.problema, fotos: 3),
+      ]);
+      expect(r.totalAptos, 4);
+      expect(r.conferidos, 2);
+      expect(r.pendentes, 1);
+      expect(r.comProblema, 1);
+      expect(r.totalFotos, 6);
+    });
+
+    test('status desconhecido conta como pendente', () {
+      final r = resumirMedicao([_apto('1101', status: 'xyz')]);
+      expect(r.pendentes, 1);
+    });
+  });
+
+  group('validarNovaMedicao', () {
+    test('exige serviço, empreiteiro e ao menos um apto', () {
+      expect(
+        validarNovaMedicao(servicoCodigo: '', empreiteiroNome: 'A', totalAptosSelecionados: 1),
+        isNotNull,
+      );
+      expect(
+        validarNovaMedicao(servicoCodigo: '5.4', empreiteiroNome: '', totalAptosSelecionados: 1),
+        isNotNull,
+      );
+      expect(
+        validarNovaMedicao(servicoCodigo: '5.4', empreiteiroNome: 'A', totalAptosSelecionados: 0),
+        isNotNull,
+      );
+      expect(
+        validarNovaMedicao(servicoCodigo: '5.4', empreiteiroNome: 'A', totalAptosSelecionados: 3),
+        isNull,
+      );
+    });
+  });
+
+  test('compararAptosMedicao ordena numericamente por torre', () {
+    final lista = [_apto('1102'), _apto('201'), _apto('1101')]..sort(compararAptosMedicao);
+    expect(lista.map((a) => a.label).toList(), ['201', '1101', '1102']);
+  });
+
+  group('serialização', () {
+    test('toMap/fromMap preserva aptos e metadados das fotos', () {
+      final record = MedicaoCampoRecord(
+        id: 'm1',
+        projectId: 'p1',
+        obra: 'Arsen Sabiá',
+        servicoCodigo: '5.4',
+        servicoNome: 'Piso cerâmico',
+        empreiteiroId: 'e1',
+        empreiteiroNome: 'Silva',
+        periodo: 'Medição 03',
+        responsavelNome: 'Luiz',
+        aptos: [
+          MedicaoCampoApto(
+            torre: 'Paris',
+            localRef: 'APTO_1101',
+            label: '1101',
+            andar: 11,
+            status: MedicaoStatus.conferido,
+            observacao: 'ok',
+            fotos: [
+              MedicaoCampoFoto(
+                id: 'f1',
+                localPath: '/tmp/a.jpg',
+                dataUrl: 'data:image/jpeg;base64,AAAA',
+                legenda: 'x',
+                capturedAt: DateTime(2026, 10, 5),
+                usuario: 'Luiz',
+              ),
+            ],
+          ),
+        ],
+        createdAt: DateTime(2026, 10, 5),
+        updatedAt: DateTime(2026, 10, 5),
+        ano: 2026,
+        mes: 9,
+      );
+      final map = record.toMap();
+      final foto = ((map['aptos'] as List).first as Map)['fotos'] as List;
+      expect((foto.first as Map).containsKey('dataUrl'), isFalse);
+      expect((foto.first as Map).containsKey('localPath'), isFalse);
+
+      final back = MedicaoCampoRecord.fromMap(map);
+      expect(back.aptos.single.label, '1101');
+      expect(back.aptos.single.status, MedicaoStatus.conferido);
+      expect(back.aptos.single.fotos.single.legenda, 'x');
+      expect(back.servicoNome, 'Piso cerâmico');
+      expect(back.ano, 2026);
+      expect(back.mes, 9);
+    });
+
+    test('copyWith não altera o id nem a criação', () {
+      final r = MedicaoCampoRecord(
+        id: 'm1',
+        projectId: 'p1',
+        obra: 'o',
+        servicoCodigo: 's',
+        servicoNome: 's',
+        createdAt: DateTime(2026, 1, 1),
+        updatedAt: DateTime(2026, 1, 1),
+        ano: 2026,
+        mes: 1,
+      );
+      final c = r.copyWith(periodo: 'novo');
+      expect(c.id, 'm1');
+      expect(c.createdAt, DateTime(2026, 1, 1));
+      expect(c.periodo, 'novo');
+    });
+  });
+
+  group('pastas ano/mês/empreiteiro', () {
+    MedicaoCampoRecord med(String id, int ano, int mes, String empId, String empNome) {
+      return MedicaoCampoRecord(
+        id: id,
+        projectId: 'p',
+        obra: 'o',
+        servicoCodigo: 's',
+        servicoNome: 's',
+        empreiteiroId: empId,
+        empreiteiroNome: empNome,
+        createdAt: DateTime(2026, 1, 1),
+        updatedAt: DateTime(2026, 1, 1),
+        ano: ano,
+        mes: mes,
+      );
+    }
+
+    test('rótulo do empreiteiro junta especialidade e nome', () {
+      expect(rotuloEmpreiteiro(especialidade: 'Eletricista', nome: 'Marcio'), 'Eletricista - Marcio');
+      expect(rotuloEmpreiteiro(especialidade: '', nome: 'Marcio'), 'Marcio');
+    });
+
+    test('nome do mês em português', () {
+      expect(nomeMes(9), 'Setembro');
+      expect(nomeMes(3), 'Março');
+      expect(nomeMes(13), '-');
+    });
+
+    test('anos e meses vêm das medições e das pastas vazias, mais novo primeiro', () {
+      final lista = [med('a', 2026, 9, 'e1', 'x'), med('b', 2025, 12, 'e1', 'x')];
+      expect(anosDasPastas(lista, {'2027'}), [2027, 2026, 2025]);
+      expect(mesesDasPastas(lista, {'2026|10'}, 2026), [10, 9]);
+      expect(mesesDasPastas(lista, <String>{}, 2025), [12]);
+    });
+
+    test('agrupa por empreiteiro só dentro do ano/mês escolhido', () {
+      final lista = [
+        med('a', 2026, 9, 'e1', 'Eletricista - Marcio'),
+        med('b', 2026, 9, 'e1', 'Eletricista - Marcio'),
+        med('c', 2026, 9, 'e2', 'Pintor - Ze'),
+        med('d', 2026, 8, 'e1', 'Eletricista - Marcio'),
+      ];
+      final g = agruparPorEmpreiteiro(lista, 2026, 9);
+      expect(g.keys.toSet(), {'e1', 'e2'});
+      expect(g['e1']!.length, 2);
+      expect(g['e2']!.length, 1);
+    });
+  });
+}

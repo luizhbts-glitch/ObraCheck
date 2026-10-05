@@ -78,6 +78,7 @@ class HiveBoxHelper {
       'descritivos_servico',
       'orcamentos_servico',
       'medicoes_empreiteiro',
+      'medicoes_campo',
       'recebimentos_material',
       'despesas',
       'project_settings',
