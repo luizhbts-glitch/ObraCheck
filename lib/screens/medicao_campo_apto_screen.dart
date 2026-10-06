@@ -7,6 +7,7 @@ import 'package:image_picker/image_picker.dart';
 import '../models/medicao_campo_record.dart';
 import '../services/medicao_campo_service.dart';
 import '../services/medicao_foto_service.dart';
+import '../utils/medicao_campo_rules.dart';
 
 /// Conferência de um apartamento dentro da medição: status, observação
 /// opcional e fotos (câmera ou galeria), cada uma já com a faixa de
@@ -194,7 +195,7 @@ class _MedicaoCampoAptoScreenState extends State<MedicaoCampoAptoScreen> {
     }
 
     return Scaffold(
-      appBar: AppBar(title: Text('${apto.torre} • Apto ${apto.label}')),
+      appBar: AppBar(title: Text('${apto.torre} • ${rotuloLocalMedicao(apto.label)}')),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [

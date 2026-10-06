@@ -638,7 +638,7 @@ class PdfReportService {
         decoration: pw.BoxDecoration(color: _hex(0xFFE8E8E8)),
         children: [
           _ncHeaderCell('TORRE', align: pw.TextAlign.left),
-          _ncHeaderCell('APTO', align: pw.TextAlign.center),
+          _ncHeaderCell('LOCAL', align: pw.TextAlign.center),
           _ncHeaderCell('STATUS', align: pw.TextAlign.left),
           _ncHeaderCell('OBSERVAÇÃO', align: pw.TextAlign.left),
           _ncHeaderCell('FOTOS', align: pw.TextAlign.center),
@@ -688,7 +688,7 @@ class PdfReportService {
       padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 4),
       color: _hex(0xFFE8E8E8),
       child: pw.Text(
-        'APTO ${apto.label} | ${apto.torre} | ${MedicaoStatus.label(apto.status)}',
+        '${rotuloLocalMedicao(apto.label).toUpperCase()} | ${apto.torre} | ${MedicaoStatus.label(apto.status)}',
         style: pw.TextStyle(
           font: pw.Font.helveticaBold(),
           fontSize: 9,

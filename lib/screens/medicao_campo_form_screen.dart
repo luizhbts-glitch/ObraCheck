@@ -251,6 +251,37 @@ class _MedicaoCampoFormScreenState extends State<MedicaoCampoFormScreen> {
     ).where((c) => !c.isSpecialArea).toList(growable: false);
   }
 
+  /// Áreas comuns selecionáveis: as áreas especiais da obra (configuradas ou
+  /// legadas) mais Rooftop, Barrilete e Caixa d'água quando ainda não
+  /// existem com esse nome.
+  List<OperationalGridCell> _areasDaTorre() {
+    final areas = ObraStructure.operationalCellsForTower(
+      _torre,
+    ).where((c) => c.isSpecialArea).toList();
+    const extras = <(String, String, List<String>)>[
+      ('Rooftop', 'ROOFTOP', ['rooftop', 'cobertura']),
+      ('Barrilete', 'BARRILETE', ['barrilet']),
+      ("Caixa d'água", 'CAIXA_DAGUA', ['caixa']),
+    ];
+    for (final (label, ref, palavras) in extras) {
+      final jaExiste = areas.any((c) {
+        final texto = '${c.label} ${c.localRef}'.toLowerCase();
+        return palavras.any(texto.contains);
+      });
+      if (!jaExiste) {
+        areas.add(
+          OperationalGridCell(
+            label: label,
+            localRef: ref,
+            andar: 0,
+            isSpecialArea: true,
+          ),
+        );
+      }
+    }
+    return areas;
+  }
+
   MedicaoCampoApto _novoApto(OperationalGridCell c) => MedicaoCampoApto(
     torre: _torre,
     localRef: c.localRef,
@@ -374,6 +405,7 @@ class _MedicaoCampoFormScreenState extends State<MedicaoCampoFormScreen> {
   Widget build(BuildContext context) {
     final editing = widget.existing != null;
     final cells = _cellsDaTorre();
+    final areas = _areasDaTorre();
     final porAndar = <int, List<OperationalGridCell>>{};
     for (final c in cells) {
       porAndar.putIfAbsent(c.andar, () => []).add(c);
@@ -460,7 +492,7 @@ class _MedicaoCampoFormScreenState extends State<MedicaoCampoFormScreen> {
           ),
           const SizedBox(height: 18),
           Text(
-            'Apartamentos desta medição (${_sel.length})',
+            'Locais desta medição (${_sel.length})',
             style: const TextStyle(fontWeight: FontWeight.w800),
           ),
           const SizedBox(height: 8),
@@ -519,6 +551,42 @@ class _MedicaoCampoFormScreenState extends State<MedicaoCampoFormScreen> {
               runSpacing: 8,
               children: [
                 for (final c in porAndar[andar]!)
+                  FilterChip(
+                    label: Text(c.label),
+                    selected: _sel.containsKey(_chave(c)),
+                    onSelected: (_) => _toggleCell(c),
+                  ),
+              ],
+            ),
+          ],
+          if (areas.isNotEmpty) ...[
+            const Divider(height: 22),
+            Row(
+              children: [
+                const Expanded(
+                  child: Text(
+                    'Áreas comuns',
+                    style: TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                ),
+                Builder(
+                  builder: (context) {
+                    final todas = areas.every(
+                      (c) => _sel.containsKey(_chave(c)),
+                    );
+                    return TextButton(
+                      onPressed: () => _setCells(areas, !todas),
+                      child: Text(todas ? 'Nenhuma' : 'Todas'),
+                    );
+                  },
+                ),
+              ],
+            ),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final c in areas)
                   FilterChip(
                     label: Text(c.label),
                     selected: _sel.containsKey(_chave(c)),

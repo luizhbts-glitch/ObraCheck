@@ -54,6 +54,36 @@ void main() {
     });
   });
 
+  group('rótulo do local', () {
+    test('apartamento numérico vira "Apto 1101", área comum mantém o nome', () {
+      expect(rotuloLocalMedicao('1101'), 'Apto 1101');
+      expect(rotuloLocalMedicao('Rooftop'), 'Rooftop');
+      expect(rotuloLocalMedicao("Caixa d'água"), "Caixa d'água");
+    });
+
+    test('legenda da foto de área comum não diz "Apto"', () {
+      final texto = buildMedicaoFotoLegenda(
+        obra: 'Arsen',
+        torre: 'Paris',
+        apto: 'Barrilete',
+        servico: 'Impermeabilização',
+        empreiteiro: 'Silva',
+        dataHora: DateTime(2026, 10, 6, 8, 0),
+        usuario: 'Luiz',
+      );
+      expect(texto, contains('Barrilete'));
+      expect(texto, isNot(contains('Apto Barrilete')));
+    });
+
+    test('áreas comuns ficam depois dos apartamentos na ordenação', () {
+      final lista = [
+        MedicaoCampoApto(torre: 'Paris', localRef: 'ROOFTOP', label: 'Rooftop', andar: 0),
+        MedicaoCampoApto(torre: 'Paris', localRef: 'APTO_1101', label: '1101', andar: 11),
+      ]..sort(compararAptosMedicao);
+      expect(lista.map((a) => a.label).toList(), ['1101', 'Rooftop']);
+    });
+  });
+
   group('resumirMedicao', () {
     test('conta status e fotos', () {
       final r = resumirMedicao([

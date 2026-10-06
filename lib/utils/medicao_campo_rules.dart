@@ -14,10 +14,18 @@ List<String> buildMedicaoFotoLegendaLinhas({
 }) {
   String orDash(String v) => v.trim().isEmpty ? '-' : v.trim();
   return [
-    'Obra: ${orDash(obra)} | Torre: ${orDash(torre)} | Apto: ${orDash(apto)}',
+    'Obra: ${orDash(obra)} | Torre: ${orDash(torre)} | ${rotuloLocalMedicao(apto)}',
     'Serviço: ${orDash(servico)} | Empreiteiro: ${orDash(empreiteiro)}',
     '${formatMedicaoDataHora(dataHora)} | Usuário: ${orDash(usuario)}',
   ];
+}
+
+/// "Apto 1101" para apartamento; área comum (Rooftop, Barrilete, Caixa
+/// d'água...) usa só o nome.
+String rotuloLocalMedicao(String label) {
+  final l = label.trim();
+  if (l.isEmpty) return 'Local: -';
+  return RegExp(r'^\d+$').hasMatch(l) ? 'Apto $l' : l;
 }
 
 String buildMedicaoFotoLegenda({
@@ -97,7 +105,7 @@ String? validarNovaMedicao({
   if (servicoCodigo.trim().isEmpty) return 'Escolha o serviço.';
   if (empreiteiroNome.trim().isEmpty) return 'Escolha o empreiteiro.';
   if (totalAptosSelecionados < 1) {
-    return 'Marque ao menos um apartamento.';
+    return 'Marque ao menos um apartamento ou área comum.';
   }
   return null;
 }

@@ -171,7 +171,7 @@ class _MedicaoCampoDetailScreenState extends State<MedicaoCampoDetailScreen> {
                     backgroundColor: _statusColor(apto.status),
                     child: const Icon(Icons.apartment, color: Colors.white, size: 18),
                   ),
-                  title: Text('Apto ${apto.label} • ${apto.torre}'),
+                  title: Text('${rotuloLocalMedicao(apto.label)} • ${apto.torre}'),
                   subtitle: Text(
                     '${MedicaoStatus.label(apto.status)} • ${apto.fotos.length} foto(s)'
                     '${apto.observacao.trim().isEmpty ? '' : '\n${apto.observacao.trim()}'}',
