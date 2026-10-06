@@ -104,6 +104,7 @@ class MedicaoCampoService {
     required int ano,
     required int mes,
     required List<MedicaoCampoApto> aptos,
+    List<String> elementos = const [],
   }) async {
     final now = DateTime.now();
     final record = MedicaoCampoRecord(
@@ -122,6 +123,7 @@ class MedicaoCampoService {
       updatedAt: now,
       ano: ano,
       mes: mes,
+      elementos: elementos,
     );
     await box.put(record.id, record);
     unawaited(_mirror(_path(record), record.toMap()));

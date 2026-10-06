@@ -208,7 +208,7 @@ class _MedicaoCampoScreenState extends State<MedicaoCampoScreen> {
                     child: ListTile(
                       leading: const Icon(Icons.fact_check_outlined, size: 28),
                       title: Text(
-                        '${m.servicoCodigo} • ${m.servicoNome}',
+                        rotuloServico(m.servicoCodigo, m.servicoNome),
                         style: const TextStyle(fontWeight: FontWeight.w700),
                       ),
                       subtitle: Text(

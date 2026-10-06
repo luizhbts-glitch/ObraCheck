@@ -47,7 +47,7 @@ class MedicaoFotoService {
       obra: medicao.obra,
       torre: apto.torre,
       apto: apto.label,
-      servico: medicao.servicoNome,
+      servico: servicoComElementos(medicao.servicoNome, medicao.elementos),
       empreiteiro: medicao.empreiteiroNome,
       dataHora: agora,
       usuario: usuario,

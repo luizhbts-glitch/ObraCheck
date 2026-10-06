@@ -270,6 +270,11 @@ class MedicaoCampoRecord extends HiveObject {
   @HiveField(15)
   final int mes;
 
+  /// Elementos medidos (Laje, Viga, Pilar...) — opcional, usado em serviços
+  /// estruturais como carpintaria, concretagem e alvenaria.
+  @HiveField(16, defaultValue: <String>[])
+  final List<String> elementos;
+
   MedicaoCampoRecord({
     required this.id,
     required this.projectId,
@@ -287,6 +292,7 @@ class MedicaoCampoRecord extends HiveObject {
     required this.updatedAt,
     required this.ano,
     required this.mes,
+    this.elementos = const [],
   });
 
   int get totalFotos => aptos.fold<int>(0, (total, a) => total + a.fotos.length);
@@ -304,6 +310,7 @@ class MedicaoCampoRecord extends HiveObject {
     DateTime? updatedAt,
     int? ano,
     int? mes,
+    List<String>? elementos,
   }) {
     return MedicaoCampoRecord(
       id: id,
@@ -322,6 +329,7 @@ class MedicaoCampoRecord extends HiveObject {
       updatedAt: updatedAt ?? this.updatedAt,
       ano: ano ?? this.ano,
       mes: mes ?? this.mes,
+      elementos: elementos ?? this.elementos,
     );
   }
 
@@ -332,6 +340,7 @@ class MedicaoCampoRecord extends HiveObject {
       'obra': obra,
       'ano': ano,
       'mes': mes,
+      'elementos': elementos,
       'servicoCodigo': servicoCodigo,
       'servicoNome': servicoNome,
       'empreiteiroId': empreiteiroId,
@@ -366,6 +375,9 @@ class MedicaoCampoRecord extends HiveObject {
       pendingSync: map['pendingSync'] == true,
       createdAt: _medicaoToDate(map['createdAt']),
       updatedAt: _medicaoToDate(map['updatedAt']),
+      elementos: ((map['elementos'] as List?) ?? const [])
+          .map((e) => e.toString())
+          .toList(),
       ano: (map['ano'] as num?)?.toInt() ?? _medicaoToDate(map['createdAt']).year,
       mes: (map['mes'] as num?)?.toInt() ?? _medicaoToDate(map['createdAt']).month,
     );

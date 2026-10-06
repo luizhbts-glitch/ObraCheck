@@ -119,6 +119,10 @@ int compararAptosMedicao(MedicaoCampoApto a, MedicaoCampoApto b) {
   if (an != null && bn != null) return an.compareTo(bn);
   if (an != null) return -1;
   if (bn != null) return 1;
+  // Áreas comuns e estacionamento: pela ordem lógica (andar guarda o rank,
+  // ex.: módulo 1 subsolo antes de módulo 1 térreo) e depois pelo nome.
+  final byAndar = a.andar.compareTo(b.andar);
+  if (byAndar != 0) return byAndar;
   return a.label.compareTo(b.label);
 }
 
@@ -196,4 +200,106 @@ Map<String, List<MedicaoCampoRecord>> agruparPorEmpreiteiro(
     out.putIfAbsent(chaveEmpreiteiro(m), () => []).add(m);
   }
   return out;
+}
+
+/// Nome usado como "torre" das medições do estacionamento.
+const String kTorreGaragem = 'Garagem';
+
+/// Elementos estruturais sugeridos pro campo opcional "elementos medidos".
+const List<String> kElementosMedicao = ['Laje', 'Viga', 'Pilar', 'Parede', 'Rampa'];
+
+const List<String> kModulosGaragemPadrao = [
+  'Módulo 1',
+  'Módulo 2',
+  'Módulo 3',
+  'Módulo 4',
+];
+
+const List<String> kNiveisGaragemPadrao = ['Subsolo', 'Térreo', 'G1'];
+
+class GaragemCelula {
+  const GaragemCelula({
+    required this.label,
+    required this.localRef,
+    required this.rank,
+  });
+
+  final String label;
+  final String localRef;
+
+  /// Posição pra ordenar: módulo e, dentro dele, o nível.
+  final int rank;
+}
+
+String _slugRef(String v) {
+  const from = 'áàãâäéèêëíìîïóòõôöúùûüçÁÀÃÂÄÉÈÊËÍÌÎÏÓÒÕÔÖÚÙÛÜÇ';
+  const to = 'aaaaaeeeeiiiiooooouuuucAAAAAEEEEIIIIOOOOOUUUUC';
+  var out = v;
+  for (var i = 0; i < from.length; i++) {
+    out = out.replaceAll(from[i], to[i]);
+  }
+  return out
+      .toUpperCase()
+      .replaceAll(RegExp(r'[^A-Z0-9]+'), '_')
+      .replaceAll(RegExp(r'^_+|_+$'), '');
+}
+
+/// Separa as sublocais da garagem (como ficam na configuração da obra) em
+/// módulos e níveis; sem nenhum dos dois, usa o padrão combinado com o
+/// usuário: módulos 1 a 4 com subsolo, térreo e G1.
+({List<String> modulos, List<String> niveis}) modulosENiveisDaGaragem(
+  List<String> sublocais,
+) {
+  final modulos = <String>[];
+  final niveis = <String>[];
+  for (final raw in sublocais) {
+    final item = raw.trim();
+    final lower = item.toLowerCase();
+    if (item.isEmpty) continue;
+    if (lower.contains('modulo') || lower.contains('módulo')) {
+      modulos.add(item);
+    } else if (lower.contains('subsolo') ||
+        lower.contains('terreo') ||
+        lower.contains('térreo') ||
+        RegExp(r'^g\d+$').hasMatch(lower)) {
+      niveis.add(item);
+    }
+  }
+  return (
+    modulos: modulos.isEmpty ? kModulosGaragemPadrao : modulos,
+    niveis: niveis.isEmpty ? kNiveisGaragemPadrao : niveis,
+  );
+}
+
+/// Combinações módulo x nível do estacionamento, em ordem lógica.
+List<GaragemCelula> celulasGaragem(List<String> modulos, List<String> niveis) {
+  final out = <GaragemCelula>[];
+  for (var m = 0; m < modulos.length; m++) {
+    for (var n = 0; n < niveis.length; n++) {
+      out.add(
+        GaragemCelula(
+          label: '${modulos[m]} - ${niveis[n]}',
+          localRef: 'GARAGEM_${_slugRef(modulos[m])}_${_slugRef(niveis[n])}',
+          rank: m * 10 + n,
+        ),
+      );
+    }
+  }
+  return out;
+}
+
+/// "Execução de formas (Laje, Viga)" — serviço com os elementos, quando há.
+String servicoComElementos(String servico, List<String> elementos) {
+  final lista = elementos.where((e) => e.trim().isNotEmpty).toList();
+  if (lista.isEmpty) return servico;
+  return '$servico (${lista.join(', ')})';
+}
+
+/// Código usado quando o serviço não está no catálogo e foi digitado à mão.
+const String kServicoOutro = 'OUTRO';
+
+/// "5.4 • Execução de piso cerâmico"; serviço digitado à mão mostra só o nome.
+String rotuloServico(String codigo, String nome) {
+  if (codigo.trim().isEmpty || codigo == kServicoOutro) return nome;
+  return '$codigo • $nome';
 }

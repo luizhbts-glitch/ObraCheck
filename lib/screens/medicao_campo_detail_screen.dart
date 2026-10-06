@@ -140,13 +140,15 @@ class _MedicaoCampoDetailScreenState extends State<MedicaoCampoDetailScreen> {
             padding: const EdgeInsets.all(16),
             children: [
               Text(
-                '${record.servicoCodigo} • ${record.servicoNome}',
+                rotuloServico(record.servicoCodigo, record.servicoNome),
                 style: Theme.of(context).textTheme.titleMedium?.copyWith(
                   fontWeight: FontWeight.w800,
                 ),
               ),
               const SizedBox(height: 4),
               Text(record.empreiteiroNome),
+              if (record.elementos.isNotEmpty)
+                Text('Elementos: ${record.elementos.join(', ')}'),
               Text('${nomeMes(record.mes)}/${record.ano}'
                   '${record.periodo.trim().isEmpty ? '' : ' • ${record.periodo.trim()}'}'),
               Text('Responsável: ${record.responsavelNome.isEmpty ? '-' : record.responsavelNome}'),

@@ -7,6 +7,7 @@ import '../models/company_record.dart';
 import '../models/medicao_campo_record.dart';
 import '../services/medicao_campo_service.dart';
 import '../services/project_context_service.dart';
+import '../services/project_settings_service.dart';
 import '../utils/medicao_campo_rules.dart';
 import '../utils/project_scope.dart';
 import 'company_form_screen.dart';
@@ -45,6 +46,7 @@ class _MedicaoCampoFormScreenState extends State<MedicaoCampoFormScreen> {
   late int _mes;
   late String _torre;
   final Map<String, MedicaoCampoApto> _sel = <String, MedicaoCampoApto>{};
+  final Set<String> _elementos = <String>{};
   bool _saving = false;
 
   @override
@@ -62,10 +64,12 @@ class _MedicaoCampoFormScreenState extends State<MedicaoCampoFormScreen> {
       _empId = existing.empreiteiroId;
       _empNome = existing.empreiteiroNome;
       _periodoController.text = existing.periodo;
+      _elementos.addAll(existing.elementos);
       for (final a in existing.aptos) {
         _sel[a.chave] = a;
       }
-      if (existing.aptos.isNotEmpty && torres.contains(existing.aptos.first.torre)) {
+      if (existing.aptos.isNotEmpty &&
+          [...torres, kTorreGaragem].contains(existing.aptos.first.torre)) {
         _torre = existing.aptos.first.torre;
       }
     } else if (widget.initialEmpresa != null) {
@@ -126,15 +130,23 @@ class _MedicaoCampoFormScreenState extends State<MedicaoCampoFormScreen> {
                       ),
                       Expanded(
                         child: ListView(
-                          children: lista
-                              .map(
-                                (t) => ListTile(
-                                  title: Text('${t.codigo} • ${t.nome}'),
-                                  subtitle: Text(t.profissao),
-                                  onTap: () => Navigator.pop(context, t),
-                                ),
-                              )
-                              .toList(growable: false),
+                          children: [
+                            ListTile(
+                              leading: const Icon(Icons.edit_outlined),
+                              title: const Text(
+                                'Outro serviço (digitar o nome)',
+                              ),
+                              onTap: () =>
+                                  Navigator.pop(context, _servicoOutro),
+                            ),
+                            ...lista.map(
+                              (t) => ListTile(
+                                title: Text('${t.codigo} • ${t.nome}'),
+                                subtitle: Text(t.profissao),
+                                onTap: () => Navigator.pop(context, t),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ],
@@ -146,11 +158,87 @@ class _MedicaoCampoFormScreenState extends State<MedicaoCampoFormScreen> {
         );
       },
     );
-    if (picked == null) return;
+    if (picked == null || !mounted) return;
+    if (picked.codigo == kServicoOutro) {
+      final controller = TextEditingController(
+        text: _servicoCodigo == kServicoOutro ? _servicoNome : '',
+      );
+      final nome = await showDialog<String>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Nome do serviço'),
+          content: TextField(
+            controller: controller,
+            autofocus: true,
+            textCapitalization: TextCapitalization.sentences,
+            decoration: const InputDecoration(
+              hintText: 'Ex.: Carpintaria de laje',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancelar'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, controller.text.trim()),
+              child: const Text('Usar'),
+            ),
+          ],
+        ),
+      );
+      controller.dispose();
+      if (nome == null || nome.isEmpty) return;
+      setState(() {
+        _servicoCodigo = kServicoOutro;
+        _servicoNome = nome;
+      });
+      return;
+    }
     setState(() {
       _servicoCodigo = picked.codigo;
       _servicoNome = picked.nome;
     });
+  }
+
+  static const FvsTemplate _servicoOutro = FvsTemplate(
+    codigo: kServicoOutro,
+    nome: '',
+    profissao: '',
+    itens: [],
+  );
+
+  Future<void> _addElementoPersonalizado() async {
+    final controller = TextEditingController();
+    final nome = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Outro elemento'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          textCapitalization: TextCapitalization.sentences,
+          decoration: const InputDecoration(
+            hintText: 'Ex.: Sapata',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, controller.text.trim()),
+            child: const Text('Adicionar'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (nome == null || nome.isEmpty) return;
+    setState(() => _elementos.add(nome));
   }
 
   Future<void> _pickEmpreiteiro() async {
@@ -163,12 +251,15 @@ class _MedicaoCampoFormScreenState extends State<MedicaoCampoFormScreen> {
         String query = '';
         return StatefulBuilder(
           builder: (context, setSheet) {
-            final todas = filterRecordsByProjectScope(
-              box.values.where((c) => !c.deleted),
-              currentProjectId: projectId,
-              projectId: (c) => c.projectId,
-            ).toList()
-              ..sort((a, b) => a.nome.toLowerCase().compareTo(b.nome.toLowerCase()));
+            final todas =
+                filterRecordsByProjectScope(
+                  box.values.where((c) => !c.deleted),
+                  currentProjectId: projectId,
+                  projectId: (c) => c.projectId,
+                ).toList()..sort(
+                  (a, b) =>
+                      a.nome.toLowerCase().compareTo(b.nome.toLowerCase()),
+                );
             final q = query.trim().toLowerCase();
             final lista = todas.where((c) {
               if (q.isEmpty) return true;
@@ -262,6 +353,9 @@ class _MedicaoCampoFormScreenState extends State<MedicaoCampoFormScreen> {
       ('Rooftop', 'ROOFTOP', ['rooftop', 'cobertura']),
       ('Barrilete', 'BARRILETE', ['barrilet']),
       ("Caixa d'água", 'CAIXA_DAGUA', ['caixa']),
+      ('Elevador', 'ELEVADOR', ['elevador']),
+      ('Escada', 'ESCADA', ['escada']),
+      ('Hall', 'HALL', ['hall']),
     ];
     for (final (label, ref, palavras) in extras) {
       final jaExiste = areas.any((c) {
@@ -313,6 +407,76 @@ class _MedicaoCampoFormScreenState extends State<MedicaoCampoFormScreen> {
         }
       }
     });
+  }
+
+  List<String> get _torres => [...ObraStructure.torres, kTorreGaragem];
+
+  List<Widget> _garagemSection() {
+    final sub =
+        ProjectSettingsService
+            .instance
+            .currentProjectSettingsSync
+            ?.sectorSubLocations['Garagem'] ??
+        const <String>[];
+    final mn = modulosENiveisDaGaragem(sub);
+    final todas = celulasGaragem(mn.modulos, mn.niveis)
+        .map(
+          (g) => OperationalGridCell(
+            label: g.label,
+            localRef: g.localRef,
+            andar: g.rank,
+            isSpecialArea: true,
+          ),
+        )
+        .toList();
+    final tudo = todas.every((c) => _sel.containsKey(_chave(c)));
+    return [
+      Row(
+        children: [
+          TextButton(
+            onPressed: () => _setCells(todas, !tudo),
+            child: Text(
+              tudo ? 'Limpar estacionamento' : 'Todo o estacionamento',
+            ),
+          ),
+        ],
+      ),
+      for (var m = 0; m < mn.modulos.length; m++) ...[
+        const Divider(height: 14),
+        Builder(
+          builder: (context) {
+            final doModulo = todas.where((c) => c.andar ~/ 10 == m).toList();
+            final todos = doModulo.every((c) => _sel.containsKey(_chave(c)));
+            return Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    mn.modulos[m],
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                ),
+                TextButton(
+                  onPressed: () => _setCells(doModulo, !todos),
+                  child: Text(todos ? 'Nenhum do módulo' : 'Todos do módulo'),
+                ),
+              ],
+            );
+          },
+        ),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            for (final c in todas.where((c) => c.andar ~/ 10 == m))
+              FilterChip(
+                label: Text(c.label.substring(mn.modulos[m].length + 3)),
+                selected: _sel.containsKey(_chave(c)),
+                onSelected: (_) => _toggleCell(c),
+              ),
+          ],
+        ),
+      ],
+    ];
   }
 
   int _selecionadosNaTorre(String torre) =>
@@ -379,6 +543,7 @@ class _MedicaoCampoFormScreenState extends State<MedicaoCampoFormScreen> {
           ano: _ano,
           mes: _mes,
           aptos: aptos,
+          elementos: _elementos.toList(),
         );
       } else {
         saved = await service.salvar(
@@ -391,6 +556,7 @@ class _MedicaoCampoFormScreenState extends State<MedicaoCampoFormScreen> {
             ano: _ano,
             mes: _mes,
             aptos: aptos,
+            elementos: _elementos.toList(),
           ),
         );
       }
@@ -404,16 +570,19 @@ class _MedicaoCampoFormScreenState extends State<MedicaoCampoFormScreen> {
   @override
   Widget build(BuildContext context) {
     final editing = widget.existing != null;
-    final cells = _cellsDaTorre();
-    final areas = _areasDaTorre();
+    final garagem = _torre == kTorreGaragem;
+    final cells = garagem ? <OperationalGridCell>[] : _cellsDaTorre();
+    final areas = garagem ? <OperationalGridCell>[] : _areasDaTorre();
     final porAndar = <int, List<OperationalGridCell>>{};
     for (final c in cells) {
       porAndar.putIfAbsent(c.andar, () => []).add(c);
     }
     final andares = porAndar.keys.toList()..sort((a, b) => b.compareTo(a));
     final anoAtual = DateTime.now().year;
-    final anos = {for (var a = anoAtual - 3; a <= anoAtual + 1; a++) a, _ano}.toList()
-      ..sort();
+    final anos = {
+      for (var a = anoAtual - 3; a <= anoAtual + 1; a++) a,
+      _ano,
+    }.toList()..sort();
 
     return Scaffold(
       appBar: AppBar(title: Text(editing ? 'Editar medição' : 'Nova medição')),
@@ -432,7 +601,9 @@ class _MedicaoCampoFormScreenState extends State<MedicaoCampoFormScreen> {
             ),
             leading: const Icon(Icons.handyman_outlined),
             title: Text(
-              _servicoCodigo.isEmpty ? 'Escolher serviço' : '$_servicoCodigo • $_servicoNome',
+              _servicoCodigo.isEmpty
+                  ? 'Escolher serviço'
+                  : rotuloServico(_servicoCodigo, _servicoNome),
             ),
             trailing: const Icon(Icons.chevron_right),
             onTap: _pickServico,
@@ -490,6 +661,35 @@ class _MedicaoCampoFormScreenState extends State<MedicaoCampoFormScreen> {
               border: OutlineInputBorder(),
             ),
           ),
+          const SizedBox(height: 14),
+          const Text(
+            'Elementos medidos (opcional)',
+            style: TextStyle(fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 6),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final e in {...kElementosMedicao, ..._elementos})
+                FilterChip(
+                  label: Text(e),
+                  selected: _elementos.contains(e),
+                  onSelected: (v) => setState(() {
+                    if (v) {
+                      _elementos.add(e);
+                    } else {
+                      _elementos.remove(e);
+                    }
+                  }),
+                ),
+              ActionChip(
+                avatar: const Icon(Icons.add, size: 16),
+                label: const Text('Outro'),
+                onPressed: _addElementoPersonalizado,
+              ),
+            ],
+          ),
           const SizedBox(height: 18),
           Text(
             'Locais desta medição (${_sel.length})',
@@ -500,10 +700,12 @@ class _MedicaoCampoFormScreenState extends State<MedicaoCampoFormScreen> {
             spacing: 8,
             runSpacing: 8,
             children: [
-              for (final t in ObraStructure.torres)
+              for (final t in _torres)
                 ChoiceChip(
                   label: Text(
-                    _selecionadosNaTorre(t) > 0 ? '$t (${_selecionadosNaTorre(t)})' : t,
+                    _selecionadosNaTorre(t) > 0
+                        ? '$t (${_selecionadosNaTorre(t)})'
+                        : t,
                   ),
                   selected: t == _torre,
                   onSelected: (_) => setState(() => _torre = t),
@@ -511,18 +713,20 @@ class _MedicaoCampoFormScreenState extends State<MedicaoCampoFormScreen> {
             ],
           ),
           const SizedBox(height: 8),
-          Row(
-            children: [
-              TextButton(
-                onPressed: () => _setCells(cells, true),
-                child: const Text('Selecionar todos da torre'),
-              ),
-              TextButton(
-                onPressed: () => _setCells(cells, false),
-                child: const Text('Limpar torre'),
-              ),
-            ],
-          ),
+          if (garagem) ..._garagemSection(),
+          if (!garagem)
+            Row(
+              children: [
+                TextButton(
+                  onPressed: () => _setCells(cells, true),
+                  child: const Text('Selecionar todos da torre'),
+                ),
+                TextButton(
+                  onPressed: () => _setCells(cells, false),
+                  child: const Text('Limpar torre'),
+                ),
+              ],
+            ),
           for (final andar in andares) ...[
             const Divider(height: 14),
             Row(

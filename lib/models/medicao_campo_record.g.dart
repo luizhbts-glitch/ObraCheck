@@ -143,13 +143,14 @@ class MedicaoCampoRecordAdapter extends TypeAdapter<MedicaoCampoRecord> {
       updatedAt: fields[13] as DateTime,
       ano: fields[14] as int,
       mes: fields[15] as int,
+      elementos: fields[16] == null ? [] : (fields[16] as List).cast<String>(),
     );
   }
 
   @override
   void write(BinaryWriter writer, MedicaoCampoRecord obj) {
     writer
-      ..writeByte(16)
+      ..writeByte(17)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -181,7 +182,9 @@ class MedicaoCampoRecordAdapter extends TypeAdapter<MedicaoCampoRecord> {
       ..writeByte(14)
       ..write(obj.ano)
       ..writeByte(15)
-      ..write(obj.mes);
+      ..write(obj.mes)
+      ..writeByte(16)
+      ..write(obj.elementos);
   }
 
   @override

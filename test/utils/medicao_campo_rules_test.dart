@@ -84,6 +84,75 @@ void main() {
     });
   });
 
+  group('estacionamento', () {
+    test('sem configuração usa módulos 1 a 4 com subsolo, térreo e G1', () {
+      final mn = modulosENiveisDaGaragem(const []);
+      expect(mn.modulos, ['Módulo 1', 'Módulo 2', 'Módulo 3', 'Módulo 4']);
+      expect(mn.niveis, ['Subsolo', 'Térreo', 'G1']);
+      final celulas = celulasGaragem(mn.modulos, mn.niveis);
+      expect(celulas.length, 12);
+      expect(celulas.first.label, 'Módulo 1 - Subsolo');
+      expect(celulas.first.localRef, 'GARAGEM_MODULO_1_SUBSOLO');
+      expect(celulas[2].localRef, 'GARAGEM_MODULO_1_G1');
+      expect(celulas.map((c) => c.localRef).toSet().length, 12);
+    });
+
+    test('usa os módulos e níveis da configuração da obra quando existem', () {
+      final mn = modulosENiveisDaGaragem(['Subsolo', 'Módulo A', 'G2', 'Rampa']);
+      expect(mn.modulos, ['Módulo A']);
+      expect(mn.niveis, ['Subsolo', 'G2']);
+    });
+
+    test('ordena módulo e depois nível, não alfabeticamente', () {
+      final celulas = celulasGaragem(kModulosGaragemPadrao, kNiveisGaragemPadrao);
+      final lista = celulas
+          .map(
+            (c) => MedicaoCampoApto(
+              torre: kTorreGaragem,
+              localRef: c.localRef,
+              label: c.label,
+              andar: c.rank,
+            ),
+          )
+          .toList()
+        ..shuffle();
+      lista.sort(compararAptosMedicao);
+      expect(lista.first.label, 'Módulo 1 - Subsolo');
+      expect(lista[1].label, 'Módulo 1 - Térreo');
+      expect(lista[2].label, 'Módulo 1 - G1');
+      expect(lista.last.label, 'Módulo 4 - G1');
+    });
+  });
+
+  group('elementos e serviço', () {
+    test('serviço com elementos', () {
+      expect(servicoComElementos('Execução de formas', ['Laje', 'Viga']), 'Execução de formas (Laje, Viga)');
+      expect(servicoComElementos('Concretagem', const []), 'Concretagem');
+    });
+
+    test('serviço digitado à mão mostra só o nome', () {
+      expect(rotuloServico(kServicoOutro, 'Carpintaria de laje'), 'Carpintaria de laje');
+      expect(rotuloServico('3.1', 'Execução de formas'), '3.1 • Execução de formas');
+    });
+
+    test('registro antigo sem elementos continua legível', () {
+      final r = MedicaoCampoRecord.fromMap({
+        'id': 'x',
+        'projectId': 'p',
+        'obra': 'o',
+        'servicoCodigo': 's',
+        'servicoNome': 's',
+        'createdAt': DateTime(2026, 10, 1),
+        'updatedAt': DateTime(2026, 10, 1),
+      });
+      expect(r.elementos, isEmpty);
+      final back = MedicaoCampoRecord.fromMap(
+        r.copyWith(elementos: ['Pilar']).toMap(),
+      );
+      expect(back.elementos, ['Pilar']);
+    });
+  });
+
   group('resumirMedicao', () {
     test('conta status e fotos', () {
       final r = resumirMedicao([

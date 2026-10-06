@@ -599,7 +599,9 @@ class PdfReportService {
         crossAxisAlignment: pw.CrossAxisAlignment.start,
         children: [
           campo('OBRA', record.obra),
-          campo('SERVIÇO', '${record.servicoCodigo} - ${record.servicoNome}'),
+          campo('SERVIÇO', rotuloServico(record.servicoCodigo, record.servicoNome).replaceAll(' • ', ' - ')),
+          if (record.elementos.isNotEmpty)
+            campo('ELEMENTOS', record.elementos.join(', ')),
           campo('EMPREITEIRO', record.empreiteiroNome),
           campo('MEDIÇÃO / PERÍODO', periodo),
           campo('PASTA', pasta),
