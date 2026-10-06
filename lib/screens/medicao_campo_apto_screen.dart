@@ -2,11 +2,15 @@ import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../models/inspection_record.dart';
 import '../models/medicao_campo_record.dart';
 import '../services/medicao_campo_service.dart';
 import '../services/medicao_foto_service.dart';
+import '../services/medicao_fvs_service.dart';
+import 'inspection_screen.dart';
 import '../utils/medicao_campo_rules.dart';
 
 /// Conferência de um apartamento dentro da medição: status, observação
@@ -116,6 +120,78 @@ class _MedicaoCampoAptoScreenState extends State<MedicaoCampoAptoScreen> {
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+
+  Future<void> _abrirFvs(String elemento) async {
+    final record = _record;
+    final apto = _apto;
+    if (record == null || apto == null) return;
+    final fvs = MedicaoFvsService.instance;
+    final template = fvs.templateDe(record);
+    if (template == null) return;
+    final existente = fvs.buscar(record, apto, elemento);
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => InspectionScreen(
+          location: fvs.localizacao(record, apto, elemento, template),
+          template: template,
+          inspectionId: existente?.id,
+          returnResultOnSaveFinish: true,
+        ),
+      ),
+    );
+  }
+
+  Widget _fvsSection(MedicaoCampoRecord record, MedicaoCampoApto apto) {
+    final fvs = MedicaoFvsService.instance;
+    final template = fvs.templateDe(record);
+    if (template == null) {
+      return const Text(
+        'Este serviço foi digitado à mão e não tem FVS no catálogo.',
+        style: TextStyle(fontSize: 12),
+      );
+    }
+    final elementos = fvs.elementosDaFvs(record);
+    if (elementos.isEmpty) {
+      return const Text(
+        'Marque ao menos um elemento (Pilar, Viga, Laje...) editando a medição para gerar a FVS.',
+        style: TextStyle(fontSize: 12),
+      );
+    }
+    return ValueListenableBuilder<Box<InspectionRecord>>(
+      valueListenable: Hive.box<InspectionRecord>('inspections').listenable(),
+      builder: (context, box, _) {
+        return Column(
+          children: [
+            for (final e in elementos)
+              Builder(
+                builder: (context) {
+                  final r = fvs.buscar(record, apto, e);
+                  return Card(
+                    margin: const EdgeInsets.only(bottom: 8),
+                    child: ListTile(
+                      leading: Icon(
+                        r == null
+                            ? Icons.assignment_outlined
+                            : Icons.assignment_turned_in_outlined,
+                      ),
+                      title: Text(
+                        'FVS ${template.codigo}${e.isEmpty ? '' : ' • $e'}',
+                        style: const TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                      subtitle: Text(fvs.statusLabel(r)),
+                      trailing: FilledButton.tonal(
+                        onPressed: () => _abrirFvs(e),
+                        child: Text(r == null ? 'Preencher' : 'Abrir / editar'),
+                      ),
+                    ),
+                  );
+                },
+              ),
+          ],
+        );
+      },
+    );
   }
 
   Future<void> _removeFoto(MedicaoCampoFoto foto) async {
@@ -231,6 +307,10 @@ class _MedicaoCampoAptoScreenState extends State<MedicaoCampoAptoScreen> {
             ),
           ),
           const SizedBox(height: 16),
+          const Text('FVS do local', style: TextStyle(fontWeight: FontWeight.w800)),
+          const SizedBox(height: 8),
+          _fvsSection(record, apto),
+          const SizedBox(height: 8),
           TextField(
             controller: _obsController,
             maxLines: 3,

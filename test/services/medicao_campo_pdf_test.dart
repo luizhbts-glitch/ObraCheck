@@ -4,7 +4,9 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/painting.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:obra_check/models/inspection_record.dart';
 import 'package:obra_check/models/medicao_campo_record.dart';
+import 'package:obra_check/services/medicao_fvs_service.dart';
 import 'package:obra_check/services/pdf_report_service.dart';
 import 'package:obra_check/utils/foto_carimbo.dart';
 
@@ -110,6 +112,98 @@ void main() {
       geradoEm: DateTime(2026, 10, 5),
     );
     expect(_pageCount(bytes), 1);
+  });
+
+  InspectionRecord fvs(String label, {String elemento = ''}) {
+    return InspectionRecord(
+      id: 'i-$label',
+      obra: 'Arsen Sabiá',
+      torre: 'Paris',
+      andar: 11,
+      apto: label,
+      localRef: 'APTO_$label',
+      fvsCodigo: '5.4',
+      fvsNome: 'Execução de piso cerâmico',
+      itens: [
+        for (var i = 0; i < 5; i++)
+          InspectionItemResult(
+            index: i,
+            descricao: 'Item $i',
+            dica: '',
+            status: i == 4 ? 'nok' : 'ok',
+            obs: i == 4 ? 'Cerâmica trincada' : '',
+          ),
+      ],
+      createdAt: DateTime(2026, 10, 5),
+      updatedAt: DateTime(2026, 10, 5),
+      status: 'draft',
+      inspectionElement: elemento.isEmpty ? null : elemento,
+    );
+  }
+
+  test('FVS do apartamento entra no PDF, antes das fotos', () async {
+    final record = _record([_apto('1101', fotos: 1), _apto('1102')]);
+    final fotos = {
+      record.aptos[0].chave: [_png1x1],
+      record.aptos[1].chave: <Uint8List?>[],
+    };
+    final sem = await service.gerarMedicaoCampoBytes(
+      record: record,
+      fotosPorApto: fotos,
+      geradoEm: DateTime(2026, 10, 5),
+    );
+    final com = await service.gerarMedicaoCampoBytes(
+      record: record,
+      fotosPorApto: fotos,
+      fvsPorApto: {
+        record.aptos[0].chave: [fvs('1101')],
+        record.aptos[1].chave: [fvs('1102')],
+      },
+      geradoEm: DateTime(2026, 10, 5),
+    );
+    expect(String.fromCharCodes(com.take(4)), '%PDF');
+    // o 1102 não tinha foto (sem página própria) e agora ganha a da FVS
+    expect(_pageCount(com), _pageCount(sem) + 1);
+    expect(com.length, greaterThan(sem.length));
+  });
+
+  group('MedicaoFvsService', () {
+    final svc = MedicaoFvsService.instance;
+
+    test('serviços estruturais exigem elemento; piso não', () {
+      expect(svc.exigeElemento('3.1'), isTrue);
+      expect(svc.exigeElemento('3.3'), isTrue);
+      expect(svc.exigeElemento('5.4'), isFalse);
+      expect(svc.elementosSugeridos('3.1'), containsAll(['Pilar', 'Viga', 'Laje']));
+    });
+
+    test('uma FVS por elemento quando exige; uma só quando não exige', () {
+      final formas = _record([_apto('1101')]).copyWith(
+        servicoCodigo: '3.1',
+        servicoNome: 'Execução de formas',
+        elementos: ['Pilar', 'Laje'],
+      );
+      expect(svc.elementosDaFvs(formas), ['Pilar', 'Laje']);
+      expect(svc.elementosDaFvs(_record([_apto('1101')])), ['']);
+    });
+
+    test('serviço digitado à mão não tem FVS', () {
+      final outro = _record([_apto('1101')]).copyWith(servicoCodigo: 'OUTRO');
+      expect(svc.templateDe(outro), isNull);
+      expect(svc.elementosDaFvs(outro), isEmpty);
+    });
+
+    test('localização leva obra, torre, local e elemento da medição', () {
+      final record = _record([_apto('1101')]);
+      final loc = MedicaoFvsService.montarLocalizacao(record, record.aptos.single, 'Pilar', 'unit');
+      expect(loc['torre'], 'Paris');
+      expect(loc['localRef'], 'APTO_1101');
+      expect(loc['apto'], '1101');
+      expect(loc['obra'], 'Arsen Sabiá');
+      expect(loc['projectId'], 'p');
+      expect(loc['inspectionElement'], 'Pilar');
+      expect(loc['locationContext'], 'unit');
+    });
   });
 
   testWidgets('carimbarFoto devolve PNG do mesmo tamanho com a faixa gravada', (tester) async {

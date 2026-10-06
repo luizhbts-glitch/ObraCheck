@@ -192,6 +192,26 @@ void main() {
         validarNovaMedicao(servicoCodigo: '5.4', empreiteiroNome: 'A', totalAptosSelecionados: 3),
         isNull,
       );
+      expect(
+        validarNovaMedicao(
+          servicoCodigo: '3.1',
+          empreiteiroNome: 'A',
+          totalAptosSelecionados: 3,
+          exigeElemento: true,
+          totalElementos: 0,
+        ),
+        isNotNull,
+      );
+      expect(
+        validarNovaMedicao(
+          servicoCodigo: '3.1',
+          empreiteiroNome: 'A',
+          totalAptosSelecionados: 3,
+          exigeElemento: true,
+          totalElementos: 2,
+        ),
+        isNull,
+      );
     });
   });
 

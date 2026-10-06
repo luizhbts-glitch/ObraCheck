@@ -101,9 +101,14 @@ String? validarNovaMedicao({
   required String servicoCodigo,
   required String empreiteiroNome,
   required int totalAptosSelecionados,
+  bool exigeElemento = false,
+  int totalElementos = 0,
 }) {
   if (servicoCodigo.trim().isEmpty) return 'Escolha o serviço.';
   if (empreiteiroNome.trim().isEmpty) return 'Escolha o empreiteiro.';
+  if (exigeElemento && totalElementos < 1) {
+    return 'Este serviço é inspecionado por elemento: marque ao menos um (Pilar, Viga, Laje...).';
+  }
   if (totalAptosSelecionados < 1) {
     return 'Marque ao menos um apartamento ou área comum.';
   }

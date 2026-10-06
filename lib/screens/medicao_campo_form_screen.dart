@@ -6,6 +6,7 @@ import '../data/fvs_catalog.dart';
 import '../models/company_record.dart';
 import '../models/medicao_campo_record.dart';
 import '../services/medicao_campo_service.dart';
+import '../services/medicao_fvs_service.dart';
 import '../services/project_context_service.dart';
 import '../services/project_settings_service.dart';
 import '../utils/medicao_campo_rules.dart';
@@ -199,7 +200,16 @@ class _MedicaoCampoFormScreenState extends State<MedicaoCampoFormScreen> {
     setState(() {
       _servicoCodigo = picked.codigo;
       _servicoNome = picked.nome;
+      _ajustarElementosAoServico();
     });
+  }
+
+  void _ajustarElementosAoServico() {
+    final fvs = MedicaoFvsService.instance;
+    if (fvs.exigeElemento(_servicoCodigo)) {
+      final validos = fvs.elementosSugeridos(_servicoCodigo).toSet();
+      _elementos.removeWhere((e) => !validos.contains(e));
+    }
   }
 
   static const FvsTemplate _servicoOutro = FvsTemplate(
@@ -487,6 +497,8 @@ class _MedicaoCampoFormScreenState extends State<MedicaoCampoFormScreen> {
       servicoCodigo: _servicoCodigo,
       empreiteiroNome: _empNome,
       totalAptosSelecionados: _sel.length,
+      exigeElemento: MedicaoFvsService.instance.exigeElemento(_servicoCodigo),
+      totalElementos: _elementos.length,
     );
     if (erro != null) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(erro)));
@@ -662,16 +674,18 @@ class _MedicaoCampoFormScreenState extends State<MedicaoCampoFormScreen> {
             ),
           ),
           const SizedBox(height: 14),
-          const Text(
-            'Elementos medidos (opcional)',
-            style: TextStyle(fontWeight: FontWeight.w700),
+          Text(
+            MedicaoFvsService.instance.exigeElemento(_servicoCodigo)
+                ? 'Elementos medidos (obrigatório: uma FVS por elemento)'
+                : 'Elementos medidos (opcional)',
+            style: const TextStyle(fontWeight: FontWeight.w700),
           ),
           const SizedBox(height: 6),
           Wrap(
             spacing: 8,
             runSpacing: 8,
             children: [
-              for (final e in {...kElementosMedicao, ..._elementos})
+              for (final e in {...MedicaoFvsService.instance.elementosSugeridos(_servicoCodigo), ..._elementos})
                 FilterChip(
                   label: Text(e),
                   selected: _elementos.contains(e),

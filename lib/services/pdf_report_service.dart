@@ -15,6 +15,7 @@ import '../utils/medicao_campo_rules.dart';
 import '../utils/report_inspection_rules.dart';
 import 'matrix_report_builder.dart';
 import 'medicao_foto_service.dart';
+import 'medicao_fvs_service.dart';
 import 'pdf_download_helper.dart';
 
 class PdfExportResult {
@@ -341,6 +342,7 @@ class PdfReportService {
     final bytes = await gerarMedicaoCampoBytes(
       record: record,
       fotosPorApto: fotos,
+      fvsPorApto: MedicaoFvsService.instance.fvsDaMedicao(record),
       geradoEm: DateTime.now(),
     );
 
@@ -371,6 +373,7 @@ class PdfReportService {
   Future<Uint8List> gerarMedicaoCampoBytes({
     required MedicaoCampoRecord record,
     required Map<String, List<Uint8List?>> fotosPorApto,
+    Map<String, List<InspectionRecord>> fvsPorApto = const {},
     required DateTime geradoEm,
   }) async {
     final pdf = pw.Document();
@@ -380,6 +383,16 @@ class PdfReportService {
     final responsavel = record.responsavelNome.trim().isEmpty
         ? '-'
         : record.responsavelNome.trim();
+
+    // FVS de cada local (preenchidas no app) entram antes das fotos do local.
+    final fvsPayloads = <String, List<(InspectionRecord, _FvsPdfPayload)>>{};
+    for (final entry in fvsPorApto.entries) {
+      final lista = <(InspectionRecord, _FvsPdfPayload)>[];
+      for (final r in entry.value) {
+        lista.add((r, await _payloadFromRecord(r)));
+      }
+      fvsPayloads[entry.key] = lista;
+    }
 
     pdf.addPage(
       pw.MultiPage(
@@ -393,13 +406,14 @@ class PdfReportService {
             _medicaoCapa(record, resumo, responsavel, geradoEm),
             pw.SizedBox(height: 12),
             _buildSectionTitle('RESUMO POR APARTAMENTO'),
-            _medicaoTabelaResumo(aptos),
+            _medicaoTabelaResumo(aptos, fvsPorApto),
           ];
 
           for (final apto in aptos) {
             final fotos = fotosPorApto[apto.chave] ?? const <Uint8List?>[];
             final temFotos = apto.fotos.isNotEmpty;
-            if (temFotos) {
+            final fvsDoApto = fvsPayloads[apto.chave] ?? const [];
+            if (temFotos || fvsDoApto.isNotEmpty) {
               content.add(pw.NewPage());
             } else {
               content.add(pw.SizedBox(height: 14));
@@ -418,6 +432,10 @@ class PdfReportService {
                 ),
               );
             }
+            for (final (rec, payload) in fvsDoApto) {
+              content.add(pw.SizedBox(height: 10));
+              content.add(_medicaoFvsSecao(rec, payload));
+            }
             if (!temFotos) {
               content.add(pw.SizedBox(height: 4));
               content.add(
@@ -432,6 +450,8 @@ class PdfReportService {
               );
               continue;
             }
+            content.add(pw.SizedBox(height: 10));
+            content.add(_buildSectionTitle('FOTOS DO LOCAL'));
             content.add(pw.SizedBox(height: 8));
             for (var i = 0; i < apto.fotos.length; i += 2) {
               content.add(
@@ -623,7 +643,17 @@ class PdfReportService {
     );
   }
 
-  pw.Widget _medicaoTabelaResumo(List<MedicaoCampoApto> aptos) {
+  pw.Widget _medicaoTabelaResumo(
+    List<MedicaoCampoApto> aptos,
+    Map<String, List<InspectionRecord>> fvsPorApto,
+  ) {
+    String fvsLabel(MedicaoCampoApto a) {
+      final lista = fvsPorApto[a.chave] ?? const <InspectionRecord>[];
+      if (lista.isEmpty) return '-';
+      if (lista.length > 1) return '${lista.length} FVS';
+      return reportInspectionStatusLabel(lista.first);
+    }
+
     PdfColor corStatus(String s) {
       switch (MedicaoStatus.normalize(s)) {
         case MedicaoStatus.conferido:
@@ -642,6 +672,7 @@ class PdfReportService {
           _ncHeaderCell('TORRE', align: pw.TextAlign.left),
           _ncHeaderCell('LOCAL', align: pw.TextAlign.center),
           _ncHeaderCell('STATUS', align: pw.TextAlign.left),
+          _ncHeaderCell('FVS', align: pw.TextAlign.left),
           _ncHeaderCell('OBSERVAÇÃO', align: pw.TextAlign.left),
           _ncHeaderCell('FOTOS', align: pw.TextAlign.center),
         ],
@@ -657,6 +688,7 @@ class PdfReportService {
               fontSize: 8,
               color: corStatus(a.status),
             ),
+            _tableCell(fvsLabel(a), align: pw.TextAlign.left, fontSize: 8, color: _hex(0xFF1A1A1A)),
             _tableCell(a.observacao, align: pw.TextAlign.left, fontSize: 8, color: _hex(0xFF1A1A1A)),
             _tableCell('${a.fotos.length}', align: pw.TextAlign.center, fontSize: 8, color: _hex(0xFF1A1A1A)),
           ],
@@ -674,13 +706,39 @@ class PdfReportService {
         ),
         columnWidths: {
           0: const pw.FlexColumnWidth(1.2),
-          1: const pw.FlexColumnWidth(0.8),
-          2: const pw.FlexColumnWidth(1.4),
-          3: const pw.FlexColumnWidth(3.5),
-          4: const pw.FlexColumnWidth(0.7),
+          1: const pw.FlexColumnWidth(1.5),
+          2: const pw.FlexColumnWidth(1.3),
+          3: const pw.FlexColumnWidth(1.3),
+          4: const pw.FlexColumnWidth(2.8),
+          5: const pw.FlexColumnWidth(0.7),
         },
         children: rows,
       ),
+    );
+  }
+
+  /// FVS preenchida do local: título, contagem geral e a tabela com todos os
+  /// itens (mesmo formato do relatório individual), mais as fotos de
+  /// evidência da própria FVS quando houver.
+  pw.Widget _medicaoFvsSecao(InspectionRecord rec, _FvsPdfPayload payload) {
+    final elemento = rec.hasInspectionElement ? ' | ${rec.inspectionElement}' : '';
+    return pw.Column(
+      crossAxisAlignment: pw.CrossAxisAlignment.start,
+      children: [
+        _buildSectionTitle(
+          'FVS ${rec.fvsCodigo} - ${rec.fvsNome}$elemento | ${reportInspectionStatusLabel(rec)}'
+              .toUpperCase(),
+        ),
+        pw.SizedBox(height: 6),
+        _buildResumoCountsSection(payload),
+        pw.SizedBox(height: 6),
+        _buildItemsStatusTable(payload.items),
+        if (payload.photos.isNotEmpty) ...[
+          pw.SizedBox(height: 8),
+          _buildSectionTitle('FOTOS DA FVS'),
+          _buildPhotosSection(payload.photos),
+        ],
+      ],
     );
   }
 

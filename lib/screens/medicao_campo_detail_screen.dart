@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
+import '../models/inspection_record.dart';
 import '../models/medicao_campo_record.dart';
 import '../services/medicao_campo_service.dart';
 import '../services/pdf_report_service.dart';
 import '../utils/medicao_campo_rules.dart';
+import '../services/medicao_fvs_service.dart';
+import 'inspection_screen.dart';
 import 'medicao_campo_apto_screen.dart';
 import 'medicao_campo_form_screen.dart';
 
@@ -50,6 +53,32 @@ class _MedicaoCampoDetailScreenState extends State<MedicaoCampoDetailScreen> {
     }
   }
 
+  /// Abre a FVS do próximo local que ainda não tem; ao salvar volta pra cá
+  /// e o botão passa pro seguinte.
+  Future<void> _preencherProxima(MedicaoCampoRecord record) async {
+    final fvs = MedicaoFvsService.instance;
+    final template = fvs.templateDe(record);
+    final proxima = fvs.proximaPendente(record);
+    if (template == null || proxima == null) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => InspectionScreen(
+          location: fvs.localizacao(record, proxima.apto, proxima.elemento, template),
+          template: template,
+          returnResultOnSaveFinish: true,
+        ),
+      ),
+    );
+  }
+
+  String _fvsResumo(MedicaoCampoRecord record, MedicaoCampoApto apto) {
+    final fvs = MedicaoFvsService.instance;
+    final elementos = fvs.elementosDaFvs(record);
+    if (elementos.isEmpty) return '';
+    final feitas = elementos.where((e) => fvs.buscar(record, apto, e) != null).length;
+    return ' • FVS $feitas/${elementos.length}';
+  }
+
   Future<void> _editar(MedicaoCampoRecord record) async {
     await Navigator.of(context).push<MedicaoCampoRecord>(
       MaterialPageRoute(builder: (_) => MedicaoCampoFormScreen(existing: record)),
@@ -82,6 +111,17 @@ class _MedicaoCampoDetailScreenState extends State<MedicaoCampoDetailScreen> {
     if (mounted) Navigator.pop(context);
   }
 
+  int _pendentes(MedicaoCampoRecord record, List<MedicaoCampoApto> aptos) {
+    final fvs = MedicaoFvsService.instance;
+    var n = 0;
+    for (final a in aptos) {
+      for (final e in fvs.elementosDaFvs(record)) {
+        if (fvs.buscar(record, a, e) == null) n++;
+      }
+    }
+    return n;
+  }
+
   Color _statusColor(String status) {
     switch (MedicaoStatus.normalize(status)) {
       case MedicaoStatus.conferido:
@@ -95,6 +135,13 @@ class _MedicaoCampoDetailScreenState extends State<MedicaoCampoDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
+    return ValueListenableBuilder<Box<InspectionRecord>>(
+      valueListenable: Hive.box<InspectionRecord>('inspections').listenable(),
+      builder: (context, box, child) => _buildMedicao(context),
+    );
+  }
+
+  Widget _buildMedicao(BuildContext context) {
     return ValueListenableBuilder<Box<MedicaoCampoRecord>>(
       valueListenable: _service.box.listenable(keys: [widget.medicaoId]),
       builder: (context, box, _) {
@@ -136,6 +183,30 @@ class _MedicaoCampoDetailScreenState extends State<MedicaoCampoDetailScreen> {
               ),
             ],
           ),
+          floatingActionButton: Builder(
+            builder: (context) {
+              final fvs = MedicaoFvsService.instance;
+              if (fvs.templateDe(record) == null) return const SizedBox.shrink();
+              final elementos = fvs.elementosDaFvs(record);
+              final total = elementos.length * aptos.length;
+              final proxima = fvs.proximaPendente(record);
+              if (total == 0) return const SizedBox.shrink();
+              if (proxima == null) {
+                return FloatingActionButton.extended(
+                  heroTag: 'medicao_fvs_ok',
+                  onPressed: null,
+                  icon: const Icon(Icons.check),
+                  label: const Text('Todas as FVS iniciadas'),
+                );
+              }
+              return FloatingActionButton.extended(
+                heroTag: 'medicao_fvs_proxima',
+                onPressed: () => _preencherProxima(record),
+                icon: const Icon(Icons.assignment_outlined),
+                label: Text('Preencher FVS (${total - _pendentes(record, aptos)}/$total)'),
+              );
+            },
+          ),
           body: ListView(
             padding: const EdgeInsets.all(16),
             children: [
@@ -175,7 +246,7 @@ class _MedicaoCampoDetailScreenState extends State<MedicaoCampoDetailScreen> {
                   ),
                   title: Text('${rotuloLocalMedicao(apto.label)} • ${apto.torre}'),
                   subtitle: Text(
-                    '${MedicaoStatus.label(apto.status)} • ${apto.fotos.length} foto(s)'
+                    '${MedicaoStatus.label(apto.status)} • ${apto.fotos.length} foto(s)${_fvsResumo(record, apto)}'
                     '${apto.observacao.trim().isEmpty ? '' : '\n${apto.observacao.trim()}'}',
                   ),
                   isThreeLine: apto.observacao.trim().isNotEmpty,
