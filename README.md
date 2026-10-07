@@ -147,7 +147,9 @@ Fluxo Excel:
 
 Módulo em [`AlmoxarifeScreen`](lib/screens/almoxarife_screen.dart):
 
-- aba pendentes com devolução rápida;
+- registro de saída em formato "cartão": escolhe o responsável uma vez e adiciona vários itens com quantidade (item repetido só incrementa a quantidade); cada unidade física ainda gera seu próprio movimento `saida`, mas todos compartilham um `batchId` para agrupamento visual;
+- aba pendentes exibida em duas colunas (cartão por responsável/`batchId`, cor alternando por coluna), com devolução por quantidade (parcial ou total) por item do cartão;
+- edição do cartão pendente (ícone de lápis no cartão): ajusta quantidade por item — descer gera devolução das unidades daquele item, subir/adicionar item novo gera saída de novas unidades, sem precisar passar por dois fluxos separados;
 - cadastro/edição de equipamentos;
 - histórico de ciclos saída/devolução com filtros por equipamento, responsável e data;
 - dados com escopo por obra (`projectId`) e suporte a sync.
