@@ -11,7 +11,7 @@
     --bg:#eef1f6; --surface:#ffffff; --surface-alt:#f4f6fa;
     --ink:#16202e; --ink-soft:#5b6674; --border:#dde3ec;
     --blueprint:#0f5c9c; --blueprint-deep:#0b3d66; --safety:#e8590c;
-    --cotacao:#3b6fd1; --aprovacao:#dc9a12; --oc:#6d4fe0; --parcial:#f2711c; --finalizado:#1f9d55;
+    --cotacao:#3b6fd1; --aprovacao:#dc9a12; --oc:#6d4fe0; --parcial:#f2711c; --finalizado:#1f9d55; --excluida:#c0392b;
     --radius:10px;
   }
   *{box-sizing:border-box; margin:0; padding:0;}
@@ -72,6 +72,7 @@
   .card.OCEmitida{border-left-color:var(--oc);}
   .card.Chegadaparcial{border-left-color:var(--parcial);}
   .card.Finalizado{border-left-color:var(--finalizado);}
+  .card.Excluída{border-left-color:var(--excluida);}
 
   .connect-banner{
     display:flex; align-items:center; justify-content:space-between; gap:14px; flex-wrap:wrap;
@@ -114,6 +115,7 @@
   .badge{display:inline-block; padding:3px 9px; border-radius:99px; font-size:.7rem; font-weight:600; color:#fff; white-space:nowrap;}
   .b-Cotação{background:var(--cotacao);} .b-Aprovação{background:var(--aprovacao);}
   .b-OCEmitida{background:var(--oc);} .b-Chegadaparcial{background:var(--parcial);} .b-Finalizado{background:var(--finalizado);}
+  .b-Excluída{background:var(--excluida);}
   td.obs{max-width:220px; color:var(--ink-soft); font-size:.79rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; cursor:default;}
   td.mono{font-family:'IBM Plex Mono', monospace; font-size:.78rem; color:var(--ink-soft); white-space:nowrap;}
   .row-actions{display:flex; gap:5px; white-space:nowrap;}
@@ -357,8 +359,8 @@ const COL_DEFS = [
   {label:"Requisição", key:"req"},
   {label:"", key:null}
 ];
-const STATUS_ORDER = ["Aprovação","Cotação","OC Emitida","Chegada parcial","Finalizado"];
-const STATUS_COLORS = {"Aprovação":"#dc9a12","Cotação":"#3b6fd1","OC Emitida":"#6d4fe0","Chegada parcial":"#f2711c","Finalizado":"#1f9d55"};
+const STATUS_ORDER = ["Aprovação","Cotação","OC Emitida","Chegada parcial","Finalizado","Excluída"];
+const STATUS_COLORS = {"Aprovação":"#dc9a12","Cotação":"#3b6fd1","OC Emitida":"#6d4fe0","Chegada parcial":"#f2711c","Finalizado":"#1f9d55","Excluída":"#c0392b"};
 
 let data = [];
 let categorias = [];
@@ -551,7 +553,8 @@ function parseDateVal(s){ return s ? new Date(s).getTime() : 0; }
 
 function filtered(){
   return data.filter(r => {
-    if (!mostrarFinalizados && r.status === "Finalizado") return false;
+    // "Excluída" fica junto de "Finalizado" no mesmo toggle: some da lista por padrão.
+    if (!mostrarFinalizados && (r.status === "Finalizado" || r.status === "Excluída")) return false;
     if (filtroStatus && r.status !== filtroStatus) return false;
     if (busca){
       const itensTxt = (r.itens||[]).map(it => `${it.fornecedor} ${it.cotacaoId} ${it.ocId}`).join(" ");
@@ -567,7 +570,8 @@ function render(){
   STATUS_ORDER.forEach(s => counts[s] = 0);
   data.forEach(r => { if(counts[r.status] !== undefined) counts[r.status]++; });
 
-  const totalVisivel = mostrarFinalizados ? data.length : data.length - counts["Finalizado"];
+  const escondidosDoTotal = mostrarFinalizados ? 0 : (counts["Finalizado"] || 0) + (counts["Excluída"] || 0);
+  const totalVisivel = data.length - escondidosDoTotal;
   let ch = `<div class="card total ${filtroStatus===null?'active':''}" onclick="setFiltro(null)"><div class="num">${totalVisivel}</div><div class="lbl">Total de pedidos</div></div>`;
   STATUS_ORDER.forEach(s => {
     ch += `<div class="card ${s.replace(/\s/g,'')} ${filtroStatus===s?'active':''}" onclick="setFiltro('${s}')"><div class="num">${counts[s]}</div><div class="lbl">${s}</div></div>`;
