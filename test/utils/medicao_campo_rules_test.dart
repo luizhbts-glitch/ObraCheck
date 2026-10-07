@@ -153,6 +153,44 @@ void main() {
     });
   });
 
+  group('mesclagem de fotos no sync', () {
+    MedicaoCampoApto aptoCom(List<MedicaoCampoFoto> fotos) => MedicaoCampoApto(
+      torre: 'Paris',
+      localRef: 'APTO_1101',
+      label: '1101',
+      andar: 11,
+      fotos: fotos,
+    );
+    MedicaoCampoFoto foto(String id, {String local = '', String url = '', String path = ''}) =>
+        MedicaoCampoFoto(
+          id: id,
+          localPath: local,
+          photoUrl: url,
+          storagePath: path,
+          capturedAt: DateTime(2026, 10, 7),
+        );
+
+    test('baixar da nuvem mantém o arquivo local da foto que já existe aqui', () {
+      final locais = [aptoCom([foto('a', local: '/doc/a.jpg')])];
+      final remotos = [aptoCom([foto('a', url: 'https://x/a', path: 'p/a.jpg'), foto('b', url: 'https://x/b', path: 'p/b.jpg')])];
+      final out = preservarArquivosLocais(locais, remotos).single.fotos;
+      expect(out.length, 2);
+      expect(out[0].localPath, '/doc/a.jpg');
+      expect(out[0].photoUrl, 'https://x/a');
+      expect(out[1].localPath, isEmpty);
+      expect(out[1].photoUrl, 'https://x/b');
+    });
+
+    test('edição feita durante o upload aproveita as URLs já enviadas', () {
+      final atuais = [aptoCom([foto('a', local: '/doc/a.jpg'), foto('novo', local: '/doc/n.jpg')])];
+      final enviados = [aptoCom([foto('a', local: '/doc/a.jpg', url: 'https://x/a', path: 'p/a.jpg')])];
+      final out = mesclarUrlsDeFotos(atuais, enviados).single.fotos;
+      expect(out[0].photoUrl, 'https://x/a');
+      expect(out[0].storagePath, 'p/a.jpg');
+      expect(out[1].photoUrl, isEmpty);
+    });
+  });
+
   group('resumirMedicao', () {
     test('conta status e fotos', () {
       final r = resumirMedicao([

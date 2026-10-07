@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
@@ -26,6 +28,34 @@ class _MedicaoCampoScreenState extends State<MedicaoCampoScreen> {
   int? _ano;
   int? _mes;
   String? _empKey;
+  bool _sincronizando = false;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_sincronizar(manual: false));
+  }
+
+  /// Envia o que está pendente e traz as medições de outros aparelhos.
+  Future<void> _sincronizar({required bool manual}) async {
+    if (_sincronizando) return;
+    setState(() => _sincronizando = true);
+    final r = await _service.sincronizar(_projectId);
+    if (!mounted) return;
+    setState(() => _sincronizando = false);
+    if (!manual && r.ok && r.baixadas == 0 && r.enviadas == 0) return;
+    final partes = <String>[
+      if (r.enviadas > 0) '${r.enviadas} enviada(s)',
+      if (r.fotosEnviadas > 0) '${r.fotosEnviadas} foto(s)',
+      if (r.baixadas > 0) '${r.baixadas} baixada(s)',
+    ];
+    final texto = r.erro != null
+        ? 'Sincronização incompleta: ${r.erro}'
+        : partes.isEmpty
+        ? 'Tudo sincronizado.'
+        : 'Sincronizado: ${partes.join(', ')}.';
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(texto)));
+  }
 
   String get _projectId => _projectContext.currentProjectIdSync;
 
@@ -244,6 +274,25 @@ class _MedicaoCampoScreenState extends State<MedicaoCampoScreen> {
                       onPressed: _subir,
                     ),
               title: Text(_titulo),
+              actions: [
+                IconButton(
+                  tooltip: _service.pendentes(_projectId) > 0
+                      ? 'Sincronizar (${_service.pendentes(_projectId)} pendente(s))'
+                      : 'Sincronizar',
+                  onPressed: _sincronizando ? null : () => _sincronizar(manual: true),
+                  icon: _sincronizando
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : Badge(
+                          isLabelVisible: _service.pendentes(_projectId) > 0,
+                          label: Text('${_service.pendentes(_projectId)}'),
+                          child: const Icon(Icons.sync),
+                        ),
+                ),
+              ],
             ),
             body: vazio
                 ? Center(

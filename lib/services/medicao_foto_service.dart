@@ -1,8 +1,10 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
+import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 
@@ -117,7 +119,48 @@ class MedicaoFotoService {
         if (await file.exists()) return await file.readAsBytes();
       } catch (_) {}
     }
-    return null;
+    return _lerRemota(foto);
+  }
+
+  static const int _maxCache = 60;
+  final Map<String, Uint8List> _cacheRemoto = <String, Uint8List>{};
+
+  /// Foto tirada em outro aparelho: só existe no Storage. Cache em memória
+  /// pra não baixar de novo a cada rebuild da grade.
+  Future<Uint8List?> _lerRemota(MedicaoCampoFoto foto) async {
+    final chave = foto.storagePath.isNotEmpty ? foto.storagePath : foto.photoUrl;
+    if (chave.isEmpty) return null;
+    final cached = _cacheRemoto[chave];
+    if (cached != null) return cached;
+
+    Uint8List? bytes;
+    try {
+      if (foto.storagePath.isNotEmpty) {
+        bytes = await FirebaseStorage.instance
+            .ref()
+            .child(foto.storagePath)
+            .getData(15 * 1024 * 1024)
+            .timeout(const Duration(seconds: 30));
+      }
+    } catch (e) {
+      debugPrint('[MEDICAO_FOTO] getData falhou (${foto.storagePath}): $e');
+    }
+    if (bytes == null && foto.photoUrl.startsWith('http')) {
+      try {
+        final resp = await http
+            .get(Uri.parse(foto.photoUrl))
+            .timeout(const Duration(seconds: 30));
+        if (resp.statusCode == 200) bytes = resp.bodyBytes;
+      } catch (e) {
+        debugPrint('[MEDICAO_FOTO] download falhou: $e');
+      }
+    }
+    if (bytes == null || bytes.isEmpty) return null;
+    if (_cacheRemoto.length >= _maxCache) {
+      _cacheRemoto.remove(_cacheRemoto.keys.first);
+    }
+    _cacheRemoto[chave] = bytes;
+    return bytes;
   }
 
   /// Versão reduzida (~1000 px) só pra dentro do PDF — 64 aptos com várias

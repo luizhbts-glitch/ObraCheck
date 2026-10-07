@@ -10,6 +10,7 @@ import '../models/service_record.dart';
 import 'auth_service.dart';
 import 'cloud_sync_service.dart';
 import 'internet_connectivity_service.dart';
+import 'medicao_campo_service.dart';
 import 'platform_service.dart';
 import 'project_context_service.dart';
 import '../utils/project_identity.dart';
@@ -575,6 +576,15 @@ class SyncOrchestrator {
       }
 
       final counters = await CloudSyncService.instance.syncNow();
+      // Medição de campo vai junto, mas uma falha nela nunca derruba o sync
+      // principal (inspeções, serviços, diários...).
+      try {
+        await MedicaoCampoService.instance.sincronizar(
+          ProjectContextService.instance.currentProjectIdSync,
+        );
+      } catch (e) {
+        _log(runId, 'medicao_campo falhou: $e');
+      }
       final pending = _computePendingSnapshot();
       final now = DateTime.now();
       if (!manual) _lastAutoSyncFinishedAt = now;

@@ -223,7 +223,8 @@ class _MedicaoCampoAptoScreenState extends State<MedicaoCampoAptoScreen> {
 
   Future<void> _openFoto(MedicaoCampoFoto foto) async {
     final bytes = await MedicaoFotoService.instance.lerBytes(foto);
-    if (!mounted || bytes == null) return;
+    if (!mounted) return;
+    if (bytes == null && !foto.photoUrl.startsWith('http')) return;
     await showDialog<void>(
       context: context,
       builder: (context) => Dialog(
@@ -232,7 +233,11 @@ class _MedicaoCampoAptoScreenState extends State<MedicaoCampoAptoScreen> {
           mainAxisSize: MainAxisSize.min,
           children: [
             Flexible(
-              child: InteractiveViewer(child: Image.memory(bytes)),
+              child: InteractiveViewer(
+                child: bytes != null
+                    ? Image.memory(bytes)
+                    : Image.network(foto.photoUrl),
+              ),
             ),
             Padding(
               padding: const EdgeInsets.all(10),
@@ -409,6 +414,16 @@ class _FotoThumb extends StatelessWidget {
               future: MedicaoFotoService.instance.lerBytes(foto),
               builder: (context, snap) {
                 final bytes = snap.data;
+                if (bytes == null && foto.photoUrl.startsWith('http')) {
+                  // Sem acesso aos bytes (ex.: web sem CORS no Storage): o
+                  // <img> do navegador ainda consegue mostrar a miniatura.
+                  return Image.network(
+                    foto.photoUrl,
+                    fit: BoxFit.cover,
+                    errorBuilder: (context, error, stack) =>
+                        const Icon(Icons.image_not_supported_outlined),
+                  );
+                }
                 if (bytes == null) {
                   return Container(
                     color: Theme.of(context).colorScheme.surfaceContainerHighest,

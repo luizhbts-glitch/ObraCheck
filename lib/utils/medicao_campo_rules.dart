@@ -308,3 +308,62 @@ String rotuloServico(String codigo, String nome) {
   if (codigo.trim().isEmpty || codigo == kServicoOutro) return nome;
   return '$codigo • $nome';
 }
+
+/// Depois de enviar fotos enquanto o usuário continuava editando: aproveita as
+/// URLs já enviadas ([enviados]) nas fotos da versão mais nova ([atuais]).
+List<MedicaoCampoApto> mesclarUrlsDeFotos(
+  List<MedicaoCampoApto> atuais,
+  List<MedicaoCampoApto> enviados,
+) {
+  final urls = <String, MedicaoCampoFoto>{};
+  for (final a in enviados) {
+    for (final f in a.fotos) {
+      if (f.photoUrl.isNotEmpty) urls[f.id] = f;
+    }
+  }
+  return atuais
+      .map(
+        (a) => a.copyWith(
+          fotos: a.fotos.map((f) {
+            final enviada = urls[f.id];
+            if (enviada == null || f.photoUrl.isNotEmpty) return f;
+            return f.copyWith(
+              photoUrl: enviada.photoUrl,
+              storagePath: enviada.storagePath,
+              pendingSync: false,
+            );
+          }).toList(),
+        ),
+      )
+      .toList();
+}
+
+/// Medição baixada da nuvem: a foto que já está neste aparelho continua
+/// apontando pro arquivo local (e ganha a URL remota, se não tinha).
+List<MedicaoCampoApto> preservarArquivosLocais(
+  List<MedicaoCampoApto> locais,
+  List<MedicaoCampoApto> remotos,
+) {
+  final porId = <String, MedicaoCampoFoto>{};
+  for (final a in locais) {
+    for (final f in a.fotos) {
+      porId[f.id] = f;
+    }
+  }
+  return remotos
+      .map(
+        (a) => a.copyWith(
+          fotos: a.fotos.map((f) {
+            final local = porId[f.id];
+            if (local == null) return f;
+            return local.copyWith(
+              photoUrl: f.photoUrl.isNotEmpty ? f.photoUrl : local.photoUrl,
+              storagePath:
+                  f.storagePath.isNotEmpty ? f.storagePath : local.storagePath,
+              pendingSync: false,
+            );
+          }).toList(),
+        ),
+      )
+      .toList();
+}
