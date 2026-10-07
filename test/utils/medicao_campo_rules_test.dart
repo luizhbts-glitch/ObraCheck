@@ -191,6 +191,37 @@ void main() {
     });
   });
 
+  group('hall, escada e elevador por andar', () {
+    test('identifica o andar no nome e na referência', () {
+      final l = localDoAndar('Escada', 5);
+      expect(l.label, 'Escada - 5º andar');
+      expect(l.localRef, 'ESCADA_5');
+      expect(localDoAndar('Elevador', 12).localRef, 'ELEVADOR_12');
+      expect(localDoAndar('Hall', 5).localRef, isNot(l.localRef));
+    });
+
+    test('andares diferentes não se misturam e saem em ordem de andar', () {
+      MedicaoCampoApto a(String nome, int andar) {
+        final l = localDoAndar(nome, andar);
+        return MedicaoCampoApto(
+          torre: 'Paris',
+          localRef: l.localRef,
+          label: l.label,
+          andar: andar,
+        );
+      }
+
+      final lista = [a('Escada', 10), a('Escada', 5), a('Hall', 5)]
+        ..sort(compararAptosMedicao);
+      expect(lista.map((e) => e.label).toList(), [
+        'Escada - 5º andar',
+        'Hall - 5º andar',
+        'Escada - 10º andar',
+      ]);
+      expect(lista.map((e) => e.chave).toSet().length, 3);
+    });
+  });
+
   group('resumirMedicao', () {
     test('conta status e fotos', () {
       final r = resumirMedicao([

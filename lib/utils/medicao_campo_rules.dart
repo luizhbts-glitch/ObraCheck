@@ -367,3 +367,13 @@ List<MedicaoCampoApto> preservarArquivosLocais(
       )
       .toList();
 }
+
+/// Partes comuns que existem em cada andar (medidas por andar, não pra torre
+/// inteira): nome mostrado -> prefixo da referência.
+const List<String> kPartesPorAndar = ['Hall', 'Escada', 'Elevador'];
+
+/// "Escada - 5º andar" e a referência estável `ESCADA_5`.
+({String label, String localRef}) localDoAndar(String nome, int andar) => (
+  label: '$nome - $andarº andar',
+  localRef: '${_slugRef(nome)}_$andar',
+);

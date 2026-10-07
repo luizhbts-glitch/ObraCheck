@@ -363,9 +363,9 @@ class _MedicaoCampoFormScreenState extends State<MedicaoCampoFormScreen> {
       ('Rooftop', 'ROOFTOP', ['rooftop', 'cobertura']),
       ('Barrilete', 'BARRILETE', ['barrilet']),
       ("Caixa d'água", 'CAIXA_DAGUA', ['caixa']),
-      ('Elevador', 'ELEVADOR', ['elevador']),
-      ('Escada', 'ESCADA', ['escada']),
-      ('Hall', 'HALL', ['hall']),
+      ('Elevador (geral)', 'ELEVADOR', ['elevador']),
+      ('Escada (geral)', 'ESCADA', ['escada']),
+      ('Hall (geral)', 'HALL', ['hall']),
     ];
     for (final (label, ref, palavras) in extras) {
       final jaExiste = areas.any((c) {
@@ -384,6 +384,16 @@ class _MedicaoCampoFormScreenState extends State<MedicaoCampoFormScreen> {
       }
     }
     return areas;
+  }
+
+  OperationalGridCell _parteDoAndar(String nome, int andar) {
+    final local = localDoAndar(nome, andar);
+    return OperationalGridCell(
+      label: local.label,
+      localRef: local.localRef,
+      andar: andar,
+      isSpecialArea: true,
+    );
   }
 
   MedicaoCampoApto _novoApto(OperationalGridCell c) => MedicaoCampoApto(
@@ -773,6 +783,20 @@ class _MedicaoCampoFormScreenState extends State<MedicaoCampoFormScreen> {
                     label: Text(c.label),
                     selected: _sel.containsKey(_chave(c)),
                     onSelected: (_) => _toggleCell(c),
+                  ),
+                // Hall, escada e elevador do próprio andar (ex.: só a escada
+                // do 5º andar).
+                for (final nome in kPartesPorAndar)
+                  Builder(
+                    builder: (context) {
+                      final cell = _parteDoAndar(nome, andar);
+                      return FilterChip(
+                        avatar: const Icon(Icons.stairs_outlined, size: 16),
+                        label: Text(nome),
+                        selected: _sel.containsKey(_chave(cell)),
+                        onSelected: (_) => _toggleCell(cell),
+                      );
+                    },
                   ),
               ],
             ),
